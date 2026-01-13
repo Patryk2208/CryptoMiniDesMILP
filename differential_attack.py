@@ -1,11 +1,29 @@
+"""
+Atak Kryptoanalizy Różnicowej na DES
+=====================================
+Na podstawie Sekcji 2 i 6 dokumentacji.
+
+Wykorzystuje solver MILP do znajdowania optymalnych charakterystyk różnicowych,
+a następnie przeprowadza atak metodą zliczania do odzyskania klucza ostatniej rundy.
+"""
+
 import random
 from collections import Counter
-# Importujemy Twoją implementację DES
+# Importujemy implementację DES
 from full_des import DES
-# Importujemy NOWY solver MILP dla różnic
+# Importujemy solver MILP dla różnic
 from des_milp_diff_solver import DES_MILP_Differential
 
+
 class DifferentialAttack:
+    """
+    Klasa implementująca atak różnicowy na DES.
+    
+    Zgodnie z Sekcją 2.1: Atak polega na znajdowaniu charakterystyki różnicowej
+    i wykorzystaniu jej do odzyskania fragmentów klucza poprzez analizę par
+    tekstów o znanej różnicy.
+    """
+    
     def __init__(self, des_instance):
         self.cipher = des_instance
         # Tablica odwrotna do permutacji P (potrzebna do cofania permutacji w ataku)
@@ -14,14 +32,33 @@ class DifferentialAttack:
             self.P_INV_TABLE[val - 1] = idx + 1
 
     def undo_ip(self, ciphertext):
-        """Cofa permutację końcową IP-1."""
+        """
+        Cofa permutację końcową IP-1.
+        
+        Zwraca:
+            Krotkę (R_last, L_last) - stan przed permutacją końcową
+        """
         pre_output = self.cipher.permute(ciphertext, self.cipher.IP_TABLE, 64)
         r_last = (pre_output >> 32) & 0xFFFFFFFF
         l_last = pre_output & 0xFFFFFFFF
         return r_last, l_last
 
     def get_sbox_output_diff(self, r_last, r_last_prime, key_chunk, sbox_idx):
-        """Symuluje cofnięcie operacji w S-boxie dla danej hipotezy klucza."""
+        """
+        Symuluje cofnięcie operacji w S-boxie dla danej hipotezy klucza.
+        
+        Zgodnie z Sekcją 6.4: Dla każdego kandydata na klucz wykonujemy
+        częściowe odszyfrowanie i sprawdzamy zgodność różnic.
+        
+        Argumenty:
+            r_last: Prawa połowa pierwszego szyfrogramu (L po IP)
+            r_last_prime: Prawa połowa drugiego szyfrogramu
+            key_chunk: 6-bitowa hipoteza klucza dla danego S-boxa
+            sbox_idx: Indeks S-boxa (0-7)
+        
+        Zwraca:
+            Różnicę wyjściową S-boxa dla podanej hipotezy klucza
+        """
         # 1. Pobierz 6 bitów wchodzących do S-boxa (po ekspansji E)
         expanded_R = self.cipher.permute(r_last, self.cipher.E_TABLE, 32)
         expanded_R_prime = self.cipher.permute(r_last_prime, self.cipher.E_TABLE, 32)
@@ -46,6 +83,22 @@ class DifferentialAttack:
         return out_val ^ out_val_prime
 
     def run_attack(self, diff_in, rounds, num_pairs=1000):
+        """
+        Przeprowadza atak różnicowy metodą zliczania.
+        
+        Zgodnie z Sekcją 6.4 (Weryfikacja i odzyskiwanie klucza):
+        1. Generowanie par tekstów o różnicy diff_in
+        2. Dla każdego S-boxa testowanie wszystkich 64 hipotez klucza
+        3. Wybór hipotezy o największej zgodności
+        
+        Argumenty:
+            diff_in: 64-bitowa różnica wejściowa (z MILP)
+            rounds: Liczba rund szyfru
+            num_pairs: Liczba par do wygenerowania
+        
+        Zwraca:
+            48-bitowy odzyskany klucz ostatniej rundy
+        """
         print(f"[*] Generowanie {num_pairs} par tekstów dla różnicy: {diff_in:016x}...")
         
         pairs = []
@@ -65,14 +118,13 @@ class DifferentialAttack:
         for sbox_idx in range(8):
             votes = Counter()
             
-            # Pokaż postęp, żebyś wiedział, który S-Box jest liczony
+            # Pokaż postęp
             print(f"    -> Analiza S-Box {sbox_idx + 1}/8...") 
 
             for k_guess in range(64):
                 diffs_for_guess = []
                 
-                # --- POPRAWKA TUTAJ ---
-                # Usunięto [:50]. Teraz iterujemy po wszystkich wygenerowanych parach!
+                # Iterujemy po wszystkich wygenerowanych parach
                 for c1, c2 in pairs: 
                     r1, l1 = self.undo_ip(c1)
                     r2, l2 = self.undo_ip(c2)
@@ -85,17 +137,18 @@ class DifferentialAttack:
                 most_common_diff, count = Counter(diffs_for_guess).most_common(1)[0]
                 votes[k_guess] = count
 
-            # Wybieramy klucz, który miał najwyższy 'pik' (największą zgodność z jakąkolwiek różnicą)
+            # Wybieramy klucz o najwyższym 'piku' (największej zgodności)
             best_k, count = votes.most_common(1)[0]
             recovered_key_fragments[sbox_idx] = best_k
             
-            # Teraz mianownik będzie wynosił num_pairs (np. 10000), a nie 50!
             print(f"      Zwycięzca: {best_k:02x} (Trafienia: {count}/{num_pairs})")
 
+        # Składamy 48-bitowy klucz z 8 fragmentów po 6 bitów
         round_key = 0
         for i in range(8):
             round_key = (round_key << 6) | recovered_key_fragments[i]
         return round_key
+
 
 if __name__ == "__main__":
     # 1. Konfiguracja
@@ -106,8 +159,8 @@ if __name__ == "__main__":
     
     print(f"--- ATAK RÓŻNICOWY Z MILP ({ROUNDS} RUNDY) ---")
     
-    # 2. Użycie solvera MILP (Teraz prawdziwego!)
-    milp_solver = DES_MILP_Differential(rounds=ROUNDS-1) # Szukamy ścieżki do przedostatniej rundy
+    # 2. Użycie solvera MILP
+    milp_solver = DES_MILP_Differential(rounds=ROUNDS-1)  # Szukamy ścieżki do przedostatniej rundy
     optimal_diff_in = milp_solver.solve()
     
     # 3. Atak
@@ -118,5 +171,6 @@ if __name__ == "__main__":
     print(f"Prawdziwy klucz ost. rundy: {true_last_key:012x}")
     print(f"Znaleziony klucz ost. rundy: {found_key:012x}")
     
+    # Obliczanie zgodności bitów
     matches = bin(~(true_last_key ^ found_key) & 0xFFFFFFFFFFFF).count('1')
     print(f"Zgodność bitów: {matches}/48")

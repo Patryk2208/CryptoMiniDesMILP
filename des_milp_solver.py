@@ -1,14 +1,14 @@
 """
-MILP Solver for Linear Cryptanalysis of DES
-============================================
-Based on Sections 7.1-7.3 of the documentation.
+Solver MILP dla Kryptoanalizy Liniowej DES
+==========================================
+Na podstawie Sekcji 7.1-7.3 dokumentacji.
 
-Uses Mixed Integer Linear Programming to find optimal linear approximations
-by minimizing the number of active S-boxes.
+Wykorzystuje Mieszane Programowanie Liniowe Całkowitoliczbowe do znajdowania optymalnych 
+aproksymacji liniowych poprzez minimalizację liczby aktywnych S-boxów.
 
-Key difference from differential attack (Section 7.2.1):
-- XOR operation: masks must be EQUAL (a = b = c)
-- Branching: uses XOR-like constraints (sum mod 2 rule)
+Kluczowa różnica od ataku różnicowego (Sekcja 7.2.1):
+- Operacja XOR: maski muszą być RÓWNE (a = b = c)
+- Rozgałęzienie: używa ograniczeń typu XOR (reguła sumy modulo 2)
 """
 
 import pulp
@@ -17,11 +17,11 @@ from sbox_tables import LAT_TABLES, get_best_linear_approximations
 
 class DES_MILP_Linear:
     """
-    MILP-based linear approximation search for DES.
+    Wyszukiwanie aproksymacji liniowych oparte na MILP dla DES.
     
-    Per Section 7.2.1: XOR constraint is a = b = c (masks must match)
-    Per Section 7.2.1: Branching uses XOR-like inequality constraints (Equation 4)
-    Per Section 7.3: Minimizes sum of active S-boxes (Equation 5)
+    Zgodnie z Sekcją 7.2.1: Ograniczenie XOR to a = b = c (maski muszą być zgodne)
+    Zgodnie z Sekcją 7.2.1: Rozgałęzienie używa nierówności typu XOR (Równanie 4)
+    Zgodnie z Sekcją 7.3: Minimalizuje sumę aktywnych S-boxów (Równanie 5)
     """
     
     def __init__(self, rounds):
@@ -29,7 +29,7 @@ class DES_MILP_Linear:
         self.prob = pulp.LpProblem("DES_Linear_Cryptanalysis", pulp.LpMinimize)
         self.sbox_active_vars = []
         
-        # DES Tables
+        # Tablice DES
         self.E_TABLE = [
             32, 1, 2, 3, 4, 5, 4, 5, 6, 7, 8, 9,
             8, 9, 10, 11, 12, 13, 12, 13, 14, 15, 16, 17,
@@ -43,7 +43,7 @@ class DES_MILP_Linear:
 
     def add_xor_constraint(self, a, b, c):
         """
-        Modelowanie XOR dla ataku liniowego (Sekcja 7.2.1, Równanie 3).
+        Modelowanie ograniczenia XOR dla ataku liniowego (Sekcja 7.2.1, Równanie 3).
         W ataku liniowym maski wejściowe i wyjściowe XOR muszą być RÓWNE.
         """
         self.prob += (a == b)
@@ -64,36 +64,36 @@ class DES_MILP_Linear:
 
     def solve(self):
         """
-        Find optimal linear approximation minimizing active S-boxes.
+        Znajduje optymalną aproksymację liniową minimalizując liczbę aktywnych S-boxów.
         
-        Returns:
-            Tuple of (input_mask, output_mask) as 64-bit integers
+        Zwraca:
+            Krotkę (maska_wejściowa, maska_wyjściowa) jako 64-bitowe liczby całkowite
         """
-        # Mask variables for L and R halves at each round
+        # Zmienne masek dla połówek L i R dla każdej rundy
         masks_L = [[pulp.LpVariable(f"L_{r}_{i}", cat='Binary') for i in range(32)] 
                    for r in range(self.rounds + 1)]
         masks_R = [[pulp.LpVariable(f"R_{r}_{i}", cat='Binary') for i in range(32)] 
                    for r in range(self.rounds + 1)]
 
         for r in range(self.rounds):
-            # In linear cryptanalysis, Feistel structure propagates differently
-            # Mask on L_{r+1} comes from R_r 
+            # W kryptoanalizie liniowej struktura Feistela propaguje się inaczej
+            # Maska na L_{r+1} pochodzi z R_r 
             for i in range(32):
                 self.prob += (masks_L[r+1][i] == masks_R[r][i])
             
-            # f function input mask = mask on R_r
-            # After expansion E, we have 48-bit mask
-            # But expansion creates branching (some bits are duplicated)
+            # Maska wejściowa funkcji f = maska na R_r
+            # Po ekspansji E mamy 48-bitową maskę
+            # Ale ekspansja tworzy rozgałęzienia (niektóre bity są duplikowane)
             
-            # Build expanded mask with branching constraints
+            # Budowanie rozszerzonej maski z ograniczeniami rozgałęzień
             expanded_mask = []
             for i in range(48):
                 bit_idx = self.E_TABLE[i] - 1
                 exp_bit = pulp.LpVariable(f"Exp_{r}_{i}", cat='Binary')
                 expanded_mask.append(exp_bit)
             
-            # Handle branching: bits that appear multiple times in E must XOR
-            # Map: which positions in E point to the same R bit
+            # Obsługa rozgałęzień: bity które pojawiają się wielokrotnie w E muszą XOR
+            # Mapa: które pozycje w E wskazują na ten sam bit R
             bit_usage = {}
             for i in range(48):
                 bit_idx = self.E_TABLE[i] - 1
@@ -101,62 +101,62 @@ class DES_MILP_Linear:
                     bit_usage[bit_idx] = []
                 bit_usage[bit_idx].append(i)
             
-            # For bits used once: direct equality
-            # For bits used twice: branching constraint
+            # Dla bitów używanych raz: bezpośrednia równość
+            # Dla bitów używanych dwa razy: ograniczenie rozgałęzienia
             for bit_idx, positions in bit_usage.items():
                 if len(positions) == 1:
                     self.prob += (expanded_mask[positions[0]] == masks_R[r][bit_idx])
                 else:
-                    # Branching: R bit = XOR of expansion positions (sum mod 2)
-                    # For 2 positions: R[bit] = exp[p1] XOR exp[p2]
+                    # Rozgałęzienie: bit R = XOR pozycji ekspansji (suma mod 2)
+                    # Dla 2 pozycji: R[bit] = exp[p1] XOR exp[p2]
                     self.add_branching_constraint(
                         masks_R[r][bit_idx], 
                         expanded_mask[positions[0]], 
                         expanded_mask[positions[1]]
                     )
             
-            # S-box layer
+            # Warstwa S-boxów
             sbox_outputs = []
             for k in range(8):
                 input_bits = expanded_mask[k*6 : (k+1)*6]
                 
-                # Activity variable A_r,k (Section 7.3, Equation 5)
+                # Zmienna aktywności A_r,k (Sekcja 7.3, Równanie 5)
                 A_rk = pulp.LpVariable(f"A_{r}_{k}", cat='Binary')
                 self.sbox_active_vars.append(A_rk)
                 
-                # S-box is active if any input mask bit is set
+                # S-box jest aktywny jeśli którykolwiek bit maski wejściowej jest ustawiony
                 for bit in input_bits:
                     self.prob += (A_rk >= bit)
                 self.prob += (pulp.lpSum(input_bits) <= 6 * A_rk)
                 
-                # Output mask bits: can only be set if S-box is active
+                # Bity maski wyjściowej: mogą być ustawione tylko jeśli S-box jest aktywny
                 out_bits = [pulp.LpVariable(f"Sout_{r}_{k}_{j}", cat='Binary') for j in range(4)]
                 for bit in out_bits:
                     self.prob += (bit <= A_rk)
                 
-                # If active, at least one output bit must be masked
-                # (based on LAT: no non-trivial input maps to zero output)
+                # Jeśli aktywny, co najmniej jeden bit wyjściowy musi być zamaskowany
+                # (na podstawie LAT: żadne nietrywialne wejście nie mapuje się na zerowe wyjście)
                 self.prob += (pulp.lpSum(out_bits) >= A_rk)
                 
                 sbox_outputs.extend(out_bits)
 
-            # Permutation P: rearrange output bits
+            # Permutacja P: przestawienie bitów wyjściowych
             f_out = [sbox_outputs[self.P_TABLE[i]-1] for i in range(32)]
             
-            # R_{r+1} mask comes from XOR of L_r mask and f output mask
+            # Maska R_{r+1} pochodzi z XOR maski L_r i maski wyjścia f
             for i in range(32):
                 self.add_xor_constraint(masks_L[r][i], f_out[i], masks_R[r+1][i])
 
-        # Non-trivial approximation: require at least one input mask bit
+        # Nietrywialna aproksymacja: wymaga co najmniej jednego bitu maski wejściowej
         self.prob += (pulp.lpSum(masks_R[0]) >= 1)
         
-        # Objective: minimize number of active S-boxes (Equation 5)
+        # Funkcja celu: minimalizuj liczbę aktywnych S-boxów (Równanie 5)
         self.prob += pulp.lpSum(self.sbox_active_vars)
         
-        # Solve
+        # Rozwiązanie
         status = self.prob.solve(pulp.PULP_CBC_CMD(msg=0))
         
-        # Extract computed masks from solver (NOT hardcoded!)
+        # Ekstrakcja obliczonych masek z solvera (NIE zahardkodowanych!)
         mask_in_L = 0
         mask_in_R = 0
         mask_out_L = 0
@@ -174,10 +174,10 @@ class DES_MILP_Linear:
         
         active_count = sum(1 for v in self.sbox_active_vars if pulp.value(v) == 1)
         
-        print(f"MILP Status: {pulp.LpStatus[status]}")
-        print(f"Minimum active S-boxes: {active_count}")
-        print(f"Input mask:  L={mask_in_L:08x}, R={mask_in_R:08x}")
-        print(f"Output mask: L={mask_out_L:08x}, R={mask_out_R:08x}")
+        print(f"Status MILP: {pulp.LpStatus[status]}")
+        print(f"Minimalna liczba aktywnych S-boxów: {active_count}")
+        print(f"Maska wejściowa:  L={mask_in_L:08x}, R={mask_in_R:08x}")
+        print(f"Maska wyjściowa: L={mask_out_L:08x}, R={mask_out_R:08x}")
         
         input_mask = (mask_in_L << 32) | mask_in_R
         output_mask = (mask_out_L << 32) | mask_out_R
@@ -186,10 +186,10 @@ class DES_MILP_Linear:
 
 
 if __name__ == "__main__":
-    print("=== MILP Linear Approximation Search ===\n")
+    print("=== Wyszukiwanie Aproksymacji Liniowych MILP ===\n")
     for rounds in [2, 3, 4]:
-        print(f"\n--- {rounds} Rounds ---")
+        print(f"\n--- {rounds} Rundy ---")
         solver = DES_MILP_Linear(rounds=rounds)
         mask_in, mask_out = solver.solve()
-        print(f"Full input mask:  {mask_in:016x}")
-        print(f"Full output mask: {mask_out:016x}")
+        print(f"Pełna maska wejściowa:  {mask_in:016x}")
+        print(f"Pełna maska wyjściowa: {mask_out:016x}")

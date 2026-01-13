@@ -1,12 +1,12 @@
 """
-S-Box Tables Module for DES Cryptanalysis
-==========================================
-Implements DDT (Difference Distribution Table) and LAT (Linear Approximation Table)
-as described in Sections 6.2.2 and 7.2.2 of the documentation.
+Moduł Tablic S-Box dla Kryptoanalizy DES
+=========================================
+Implementuje DDT (Tablicę Rozkładu Różnic) i LAT (Tablicę Aproksymacji Liniowych)
+zgodnie z opisem w Sekcjach 6.2.2 i 7.2.2 dokumentacji.
 
-References:
-- DDT: Used in differential cryptanalysis to find valid differential transitions
-- LAT: Used in linear cryptanalysis to find biased linear approximations
+Odniesienia:
+- DDT: Używana w kryptoanalizie różnicowej do znajdowania poprawnych przejść różnicowych
+- LAT: Używana w kryptoanalizie liniowej do znajdowania obciążonych aproksymacji liniowych
 """
 
 from full_des import DES
@@ -14,23 +14,23 @@ from full_des import DES
 
 def compute_ddt(sbox):
     """
-    Compute Difference Distribution Table for a 6->4 bit S-box.
+    Oblicza Tablicę Rozkładu Różnic dla S-boxa 6->4 bity.
     
-    DDT[Δin][Δout] = count of inputs x where S(x) ⊕ S(x ⊕ Δin) = Δout
+    DDT[Δin][Δout] = liczba wejść x dla których S(x) ⊕ S(x ⊕ Δin) = Δout
     
-    Per Section 6.2.2 (Eq. for DDT probability):
+    Zgodnie z Sekcją 6.2.2 (wzór na prawdopodobieństwo DDT):
     P[ΔX → ΔY] = |{x : S(x) ⊕ S(x ⊕ ΔX) = ΔY}| / 2^n
     
-    Args:
-        sbox: List of 4 rows, each with 16 columns (standard DES S-box format)
+    Argumenty:
+        sbox: Lista 4 wierszy, każdy z 16 kolumnami (standardowy format S-boxa DES)
     
-    Returns:
-        64x16 table where DDT[i][j] = count of transitions from input diff i to output diff j
+    Zwraca:
+        Tablicę 64x16 gdzie DDT[i][j] = liczba przejść z różnicy wejściowej i do różnicy wyjściowej j
     """
     ddt = [[0] * 16 for _ in range(64)]
     
     for x in range(64):
-        # Convert 6-bit input to row/col format for S-box lookup
+        # Konwertuj 6-bitowe wejście na format wiersz/kolumna dla S-boxa
         row_x = ((x >> 5) & 1) * 2 + (x & 1)
         col_x = (x >> 1) & 0x0F
         sbox_x = sbox[row_x][col_x]
@@ -49,39 +49,39 @@ def compute_ddt(sbox):
 
 def compute_lat(sbox):
     """
-    Compute Linear Approximation Table for a 6->4 bit S-box.
+    Oblicza Tablicę Aproksymacji Liniowych dla S-boxa 6->4 bity.
     
     LAT[α][β] = |{x : α·x = β·S(x)}| - 2^(n-1)
     
-    Per Section 7.2.2 (Linear attack LAT definition):
-    The value represents the bias from 50% of the linear approximation.
+    Zgodnie z Sekcją 7.2.2 (definicja LAT w ataku liniowym):
+    Wartość reprezentuje obciążenie (bias) od prawdopodobieństwa 50% aproksymacji liniowej.
     
-    Args:
-        sbox: List of 4 rows, each with 16 columns (standard DES S-box format)
+    Argumenty:
+        sbox: Lista 4 wierszy, każdy z 16 kolumnami (standardowy format S-boxa DES)
     
-    Returns:
-        64x16 table where LAT[α][β] = bias count for input mask α and output mask β
+    Zwraca:
+        Tablicę 64x16 gdzie LAT[α][β] = wartość obciążenia dla maski wejściowej α i maski wyjściowej β
     """
     lat = [[0] * 16 for _ in range(64)]
     
-    for alpha in range(64):  # Input mask (6 bits)
-        for beta in range(16):  # Output mask (4 bits)
+    for alpha in range(64):  # Maska wejściowa (6 bitów)
+        for beta in range(16):  # Maska wyjściowa (4 bity)
             count = 0
             for x in range(64):
-                # Calculate S-box output
+                # Oblicz wyjście S-boxa
                 row = ((x >> 5) & 1) * 2 + (x & 1)
                 col = (x >> 1) & 0x0F
                 s_out = sbox[row][col]
                 
-                # Parity of (α · x) = XOR of bits where alpha has 1s
+                # Parzystość (α · x) = XOR bitów gdzie alpha ma jedynki
                 parity_in = bin(alpha & x).count('1') % 2
-                # Parity of (β · S(x))
+                # Parzystość (β · S(x))
                 parity_out = bin(beta & s_out).count('1') % 2
                 
                 if parity_in == parity_out:
                     count += 1
             
-            # LAT value = count - 32 (bias from 50%)
+            # Wartość LAT = count - 32 (obciążenie od 50%)
             lat[alpha][beta] = count - 32
     
     return lat
@@ -89,14 +89,14 @@ def compute_lat(sbox):
 
 def get_valid_differential_transitions(ddt, min_probability=0):
     """
-    Get all valid (non-zero probability) differential transitions from a DDT.
+    Pobiera wszystkie poprawne (o niezerowym prawdopodobieństwie) przejścia różnicowe z DDT.
     
-    Args:
-        ddt: 64x16 Difference Distribution Table
-        min_probability: Minimum count threshold (0 = all non-zero)
+    Argumenty:
+        ddt: Tablica Rozkładu Różnic 64x16
+        min_probability: Minimalny próg liczności (0 = wszystkie niezerowe)
     
-    Returns:
-        List of tuples (delta_in, delta_out, count)
+    Zwraca:
+        Listę krotek (delta_in, delta_out, count)
     """
     transitions = []
     for d_in in range(64):
@@ -108,14 +108,14 @@ def get_valid_differential_transitions(ddt, min_probability=0):
 
 def get_best_linear_approximations(lat, min_bias=0):
     """
-    Get the best (highest absolute bias) linear approximations from a LAT.
+    Pobiera najlepsze (o największym bezwzględnym obciążeniu) aproksymacje liniowe z LAT.
     
-    Args:
-        lat: 64x16 Linear Approximation Table
-        min_bias: Minimum absolute bias threshold
+    Argumenty:
+        lat: Tablica Aproksymacji Liniowych 64x16
+        min_bias: Minimalny próg bezwzględnego obciążenia
     
-    Returns:
-        List of tuples (input_mask, output_mask, bias) sorted by |bias|
+    Zwraca:
+        Listę krotek (maska_wej, maska_wyj, obciążenie) posortowaną według |obciążenia|
     """
     approximations = []
     for alpha in range(64):
@@ -124,58 +124,58 @@ def get_best_linear_approximations(lat, min_bias=0):
             if abs(bias) > min_bias:
                 approximations.append((alpha, beta, bias))
     
-    # Sort by absolute bias (descending)
+    # Sortuj według bezwzględnego obciążenia (malejąco)
     approximations.sort(key=lambda x: abs(x[2]), reverse=True)
     return approximations
 
 
 def max_differential_probability(ddt):
     """
-    Get maximum differential probability for an S-box (excluding trivial Δ=0→0).
+    Pobiera maksymalne prawdopodobieństwo różnicowe dla S-boxa (z wykluczeniem trywialnego Δ=0→0).
     
-    Returns:
-        (delta_in, delta_out, probability) tuple for best non-trivial differential
+    Zwraca:
+        Krotkę (delta_in, delta_out, prawdopodobieństwo) dla najlepszego nietrywialnego różnicowego
     """
     best = (0, 0, 0)
-    for d_in in range(1, 64):  # Skip 0 (trivial)
+    for d_in in range(1, 64):  # Pomiń 0 (trywialny)
         for d_out in range(16):
             if ddt[d_in][d_out] > best[2]:
                 best = (d_in, d_out, ddt[d_in][d_out])
     
-    # Probability = count / 64 (since 64 possible inputs)
+    # Prawdopodobieństwo = count / 64 (ponieważ 64 możliwych wejść)
     prob = best[2] / 64.0
     return best[0], best[1], prob
 
 
 def max_linear_bias(lat):
     """
-    Get maximum linear bias for an S-box (excluding trivial α=0, β=0).
+    Pobiera maksymalne obciążenie liniowe dla S-boxa (z wykluczeniem trywialnego α=0, β=0).
     
-    Returns:
-        (input_mask, output_mask, bias) tuple for best non-trivial approximation
+    Zwraca:
+        Krotkę (maska_wej, maska_wyj, obciążenie) dla najlepszej nietrywialnej aproksymacji
     """
     best = (0, 0, 0)
-    for alpha in range(1, 64):  # Skip 0
-        for beta in range(1, 16):  # Skip 0
+    for alpha in range(1, 64):  # Pomiń 0
+        for beta in range(1, 16):  # Pomiń 0
             if abs(lat[alpha][beta]) > abs(best[2]):
                 best = (alpha, beta, lat[alpha][beta])
     
     return best
 
 
-# Pre-compute tables for all 8 DES S-boxes
+# Wstępnie oblicz tablice dla wszystkich 8 S-boxów DES
 DDT_TABLES = [compute_ddt(sbox) for sbox in DES.S_BOXES]
 LAT_TABLES = [compute_lat(sbox) for sbox in DES.S_BOXES]
 
 
 if __name__ == "__main__":
-    print("=== S-Box Analysis for DES Cryptanalysis ===\n")
+    print("=== Analiza S-Boxów dla Kryptoanalizy DES ===\n")
     
     for i in range(8):
         d_in, d_out, prob = max_differential_probability(DDT_TABLES[i])
         a_in, a_out, bias = max_linear_bias(LAT_TABLES[i])
         
         print(f"S{i+1}:")
-        print(f"  Best differential: Δin={d_in:02x} -> Δout={d_out:x}, prob={prob:.4f}")
-        print(f"  Best linear approx: α={a_in:02x}, β={a_out:x}, bias={bias}/32 = {abs(bias)/32:.4f}")
+        print(f"  Najlepsze różnicowe: Δin={d_in:02x} -> Δout={d_out:x}, prawd.={prob:.4f}")
+        print(f"  Najlepsza aproksy. liniowa: α={a_in:02x}, β={a_out:x}, bias={bias}/32 = {abs(bias)/32:.4f}")
         print()
