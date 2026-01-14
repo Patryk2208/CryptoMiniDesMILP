@@ -1,148 +1,256 @@
-"""
-Atak Kryptoanalizy Liniowej na DES
-===================================
-Na podstawie Sekcji 3 i 7 dokumentacji.
-
-Wykorzystuje solver MILP do znajdowania optymalnych aproksymacji liniowych,
-a następnie przeprowadza atak statystyczny do odzyskania fragmentów klucza.
-"""
-
 import random
 from full_des import DES
 from des_milp_solver import DES_MILP_Linear
+import sbox_tables
 
+class LinearAttack:
+    def __init__(self):
+        # P Table for undoing permutation P in partial decryption
+        self.P = DES.P_TABLE
+        self.des = None # Placeholder
 
-def get_parity(value, mask):
-    """Oblicza parzystość (XOR) bitów wybranych przez maskę."""
-    masked = value & mask
-    return bin(masked).count('1') % 2
+    def compute_parity(self, value, mask):
+        """
+        Computes parity of (value & mask).
+        Returns 0 or 1.
+        """
+        return bin(value & mask).count('1') % 2
 
-
-def linear_attack(rounds=3, n_pairs=20000, secret_key=0x133457799BBCDFF1, use_milp=True):
-    """
-    Przeprowadza atak kryptoanalizy liniowej na DES.
-    
-    Argumenty:
-        rounds: Liczba rund DES (domyślnie 3 dla demonstracji)
-        n_pairs: Liczba par tekst jawny-szyfrogram do zebrania
-        secret_key: Tajny klucz do zaatakowania
-        use_milp: Czy używać solvera MILP dla optymalnej maski (True) czy maski zapasowej (False)
-    
-    Zwraca:
-        Krotkę (najlepszy_kandydat_klucza, prawdziwy_fragment_klucza, sukces)
-    """
-    cipher = DES(secret_key, rounds=rounds)
-    target_subkey = cipher.keys[rounds - 1]
-    
-    print(f"=== ATAK LINIOWY ({rounds} rundy) ===")
-    print(f"Szukany podklucz K{rounds}: {target_subkey:012x}")
-    
-    # Krok 1: Użyj MILP do znalezienia optymalnej aproksymacji liniowej
-    if use_milp:
-        print("\n[1] Używam MILP do znalezienia optymalnej aproksymacji liniowej...")
-        milp_solver = DES_MILP_Linear(rounds=rounds - 1)  # Atakujemy n-1 rund
-        mask_in, mask_out = milp_solver.solve()
+    def get_active_sboxes_and_mask(self, output_mask_l):
+        """
+        Input: output_mask_l (Gamma_L2)
         
-        # Ekstrakcja maski dla tekstu jawnego (wejście do szyfru)
-        MASK_P = mask_in
-        MASK_OUT_L = (mask_out >> 32) & 0xFFFFFFFF
-        MASK_OUT_R = mask_out & 0xFFFFFFFF
-    else:
-        # Zapasowa: Użyj znanej dobrej aproksymacji dla S5 (atak Matsui)
-        print("\n[1] Używam znanej dobrej maski (aproksymacja S5)...")
-        MASK_P = 0x0000000000008000  # Celuje w S5
-        MASK_OUT_L = 0x00008000
-        MASK_OUT_R = 0x00000000
-    
-    print(f"    Maska wejściowa (tekst jawny):  {MASK_P:016x}")
-    print(f"    Maska wyjściowa: L={MASK_OUT_L:08x}, R={MASK_OUT_R:08x}")
-    
-    # Określenie którego S-boxa atakować na podstawie maski
-    # Na razie atakujemy S5 (indeks 4) ponieważ ma najlepszy bias wg analizy sbox_tables
-    sbox_idx = 4
-    print(f"    Atakowany S-box: S{sbox_idx + 1}")
-    
-    # Krok 2: Zbieranie par tekst jawny-szyfrogram
-    print(f"\n[2] Zbieranie {n_pairs} par tekst jawny-szyfrogram...")
-    data_pairs = []
-    for _ in range(n_pairs):
-        p = random.getrandbits(64)
-        c = cipher.encrypt(p)
-        data_pairs.append((p, c))
-    
-    # Krok 3: Analiza statystyczna - testowanie wszystkich 64 możliwych 6-bitowych fragmentów klucza
-    print("\n[3] Przeprowadzanie analizy statystycznej...")
-    biases = [0.0] * 64
-    
-    for k_guess in range(64):
-        count_match = 0
+        We need equality:
+        P . Gamma_P + L2 . Gamma_L2 + R2 . Gamma_R2 = 0
+        Substitute L2 = R3 ^ f(L3, K3)
+        P . Gamma_P + (R3 ^ f(L3, K3)) . Gamma_L2 + L3 . Gamma_R2 = 0
         
-        for P, C in data_pairs:
-            # Parzystość bitów tekstu jawnego wybranych przez maskę
-            parity_P = get_parity(P, MASK_P)
-            
-            # Cofnięcie permutacji końcowej aby uzyskać L/R przed IP^-1
-            # Po IP: otrzymujemy stan przed permutacją końcową
-            pre_output = cipher.permute(C, cipher.IP_TABLE, 64)
-            L_last = pre_output & 0xFFFFFFFF
-            R_last = (pre_output >> 32) & 0xFFFFFFFF
-            
-            # Częściowe odszyfrowanie: obliczenie wejścia S-boxa dla ostatniej rundy
-            # Ekspansja L_last (która staje się wejściem do f w ostatniej rundzie przez zamianę na końcu)
-            expanded = cipher.permute(L_last, cipher.E_TABLE, 32)
-            
-            # Pobranie 6-bitowego wejścia do S-boxa
-            shift = (7 - sbox_idx) * 6
-            sbox_in_bits = (expanded >> shift) & 0x3F
-            
-            # XOR z hipotezą klucza
-            sbox_in = sbox_in_bits ^ k_guess
-            
-            # Obliczenie wyjścia S-boxa
-            row = ((sbox_in >> 5) & 1) * 2 + (sbox_in & 1)
-            col = (sbox_in >> 1) & 0x0F
-            sbox_out_val = cipher.S_BOXES[sbox_idx][row][col]
-            
-            # Parzystość wyjścia S-boxa (używając wszystkich 4 bitów dla maksymalnego biasu)
-            parity_S_out = get_parity(sbox_out_val, 0x0F)
-            
-            # Aproksymacja liniowa: parzystość_P XOR parzystość_S_out powinna równać się parzystości bitu klucza
-            if (parity_P ^ parity_S_out) == 0:
-                count_match += 1
+        Term involving K3 is: f(L3, K3) . Gamma_L2
+        This is: P(S(E(L3) ^ K3)) . Gamma_L2
+        Move P inside: S(E(L3) ^ K3) . P_inv(Gamma_L2)
         
-        # Bias = odchylenie od 50%
-        bias = abs(count_match - (n_pairs / 2))
-        biases[k_guess] = bias
-    
-    # Krok 4: Wybór najlepszego kandydata
-    best_k = biases.index(max(biases))
-    
-    # Ekstrakcja prawdziwego 6-bitowego fragmentu klucza dla S-boxa z podklucza
-    # S5 otrzymuje bity 18-23 z 48-bitowego podklucza (indeksowane od 0 od MSB)
-    true_k_fragment = (target_subkey >> (48 - (sbox_idx + 1) * 6)) & 0x3F
-    
-    print(f"\n[4] Wyniki:")
-    print(f"    Najlepszy kandydat na klucz: {best_k:02x} (binarnie: {best_k:06b})")
-    print(f"    Prawdziwy fragment klucza:  {true_k_fragment:02x} (binarnie: {true_k_fragment:06b})")
-    print(f"    Bias: {max(biases):.2f} (oczekiwany ~N/2 = {n_pairs/2:.0f})")
-    
-    success = (best_k == true_k_fragment)
-    if success:
-        print("\n✓ ATAK ZAKOŃCZONY SUKCESEM!")
-    else:
-        print("\n✗ Atak nieudany - spróbuj zwiększyć n_pairs lub liczbę rund")
-    
-    return best_k, true_k_fragment, success
+        Let Gamma_S_out = P_inv(Gamma_L2)
+        
+        We need to identify which S-boxes have non-zero Gamma_S_out part.
+        Returns: 
+            active_sboxes: list of indices (0..7)
+            sbox_out_masks: list of 4-bit masks for EACH active sbox
+        """
+        # 1. Inverse Permutation P on Gamma_L2
+        # P_TABLE maps input bit idx to output bit idx: output[i] = input[P[i]-1]
+        # Linear property: A . P(B) = P_inv(A) . B
+        # Let Y = P(X). Y[i] = X[P[i]-1].
+        # Mask_Y . Y = Sum Mask_Y[i] * Y[i] = Sum Mask_Y[i] * X[P[i]-1].
+        # So Mask_X[k] gets contribution from Mask_Y[i] where P[i]-1 == k.
+        # Since P is bijection, for each k there is unique i.
+        # So Mask_X[P[i]-1] = Mask_Y[i].
+        
+        gamma_s_out = 0
+        for i in range(32): # i is output index (0..31)
+            # Check bit i of output_mask_l
+            if (output_mask_l >> (31 - i)) & 1:
+                # Corresponds to input bit P[i]-1
+                input_pos = self.P[i] - 1
+                gamma_s_out |= (1 << (31 - input_pos))
+                 
+        active_sboxes = []
+        sbox_out_masks = {}
+        
+        for i in range(8):
+            # Extract 4-bit mask for S-box i
+            # S-box i outputs bits 4*i to 4*i+3 (0-indexed, MSB first)
+            # So shift = 32 - 4*(i+1) ?
+            # Total 32 bits.
+            # i=0 (S1) -> bits 0,1,2,3 (MSB).
+            # shift for bit 0 is 31.
+            # shift for bit 3 is 28.
+            # So shift = 32 - 4 - 4*i = 28 - 4*i.
+            
+            shift = 28 - 4*i
+            mask_chunk = (gamma_s_out >> shift) & 0xF
+            
+            if mask_chunk != 0:
+                active_sboxes.append(i)
+                sbox_out_masks[i] = mask_chunk
+                
+        return active_sboxes, sbox_out_masks
 
+    def partial_decryption(self, L3, active_sboxes, subkeys, sbox_out_masks):
+        """
+        Compute parity of f(L3, subkeys) . sbox_out_masks
+        Only for active S-boxes.
+        
+        subkeys: dictionary {sbox_idx: 6-bit key}
+        """
+        parity = 0
+        
+        # Expand L3 to 48 bits
+        # We need a DES instance or static method permuate. DES instance is cleaner.
+        # self.des is now available after run_attack starts.
+        expanded = self.des.permute(L3, DES.E_TABLE, 32)
+        
+        for idx in active_sboxes:
+             # Extract 6-bit input for S-box idx
+             # Bits idx*6 to (idx+1)*6
+             # MSB is bit 0.
+             # shift = 48 - 6 - 6*idx = 42 - 6*idx
+             shift = 42 - 6*idx
+             input_chunk = (expanded >> shift) & 0x3F
+             
+             # XOR with subkey guess
+             key_chunk = subkeys[idx]
+             s_in = input_chunk ^ key_chunk
+             
+             # S-box lookup
+             # s_in is 6 bits
+             # DES.S_BOXES is static
+             row = ((s_in >> 5) & 1) * 2 + (s_in & 1)
+             col = (s_in >> 1) & 0x0F
+             s_out_val = DES.S_BOXES[idx][row][col]
+             
+             # Parity with mask
+             mask = sbox_out_masks[idx]
+             p = self.compute_parity(s_out_val, mask)
+             parity ^= p
+             
+        return parity
+
+    def run_attack(self, num_samples=10000):
+        print(f"Running Linear Attack with {num_samples} samples...")
+        
+        # 1. Get characteristic from MILP
+        solver = DES_MILP_Linear(rounds=2)
+        res = solver.solve()
+        if not res:
+            print("Failed to find characteristic.")
+            return
+
+        input_mask_L, input_mask_R = res['input_mask_L'], res['input_mask_R']
+        output_mask_L, output_mask_R = res['output_mask_L'], res['output_mask_R']
+        
+        print(f"Characteristic found.")
+        print(f"Gamma_P (L0, R0) = ({hex(input_mask_L)}, {hex(input_mask_R)})")
+        print(f"Gamma_L2 = {hex(output_mask_L)}")
+        
+        if output_mask_L == 0:
+            print("Gamma_L2 is 0. Cannot recover key bits (Distinguisher only).")
+            return
+
+        active_sboxes, sbox_out_masks = self.get_active_sboxes_and_mask(output_mask_L)
+        print(f"Active S-boxes in Round 3: {active_sboxes}")
+        print(f"S-box Output Masks (before P): {sbox_out_masks}")
+        
+        # 2. Generate Data
+        print("Generating Plantext-Ciphertext pairs...")
+        pairs = []
+        # Random key
+        key = random.getrandbits(64)
+        print(f"True Key: {hex(key)}")
+        
+        # Init DES with TRUE KEY and 3 ROUNDS
+        self.des = DES(key, rounds=3)
+        
+        # Derive round 3 subkey parts for verification
+        # Key schedule is generated in __init__
+        subkeys_all = self.des.keys
+        k3 = subkeys_all[2] # Round 3 key (0-indexed -> 2)
+        # Extract 6-bit chunks for active sboxes
+        true_subkeys = {}
+        # k3 is 48 bits.
+        for idx in active_sboxes:
+             shift = 42 - 6*idx
+             true_subkeys[idx] = (k3 >> shift) & 0x3F
+        print(f"True Subkeys for active S-boxes: {true_subkeys}")
+
+        for _ in range(num_samples):
+            pt = random.getrandbits(64)
+            ct = self.des.encrypt(pt) # 3-round encryption using self.des
+            pairs.append((pt, ct))
+            
+        # 3. Key Recovery
+        if len(active_sboxes) > 4:
+            print("Warning: Too many active S-boxes to brute force simultaneously.")
+            
+        import itertools
+        key_guesses = list(itertools.product(range(64), repeat=len(active_sboxes)))
+        
+        best_key = None
+        max_bias = -1
+        
+        print(f"Testing {len(key_guesses)} key candidates...")
+        
+        processed_pairs = []
+        for pt, ct in pairs:
+            # Separate L0, R0 (from pt)
+            l0r0 = self.des.permute(pt, DES.IP_TABLE, 64)
+            L0 = (l0r0 >> 32) & 0xFFFFFFFF
+            R0 = l0r0 & 0xFFFFFFFF
+            
+            # Ciphertext CT -> IP_inv -> R3, L3
+            # In full_des.py: pre_output = (R << 32) | L. 
+            # permute(pre_output, FP_TABLE).
+            # So CT = IP_inv(R3 | L3).
+            # So R3 | L3 = IP(CT).
+            # Use IP_TABLE to reverse IP_inv? No.
+            # IP_TABLE is inverse of FP_TABLE.
+            # So IP(CT) should give R3 | L3.
+            
+            r3l3 = self.des.permute(ct, DES.IP_TABLE, 64)
+            
+            # r3l3 = (R3 << 32) | L3
+            R3 = (r3l3 >> 32) & 0xFFFFFFFF
+            L3 = r3l3 & 0xFFFFFFFF
+            
+            # Fixed Parity:
+            # P.Gamma_P + L3.Gamma_R2 + (R3).Gamma_L2 + ...
+            # Wait previously: P.Gamma_P + L2.Gamma_L2 + R2.Gamma_R2 = 0
+            # Substitute L2 = R3 ^ f(L3, K)
+            # Substitute R2 = L3
+            # P.Gamma_P + (R3 ^ f(L3, K)).Gamma_L2 + L3.Gamma_R2 = 0
+            # P.Gamma_P + R3.Gamma_L2 + L3.Gamma_R2 + f(L3, K).Gamma_L2 = 0
+            
+            fixed_parity = self.compute_parity(L0, input_mask_L) ^ \
+                           self.compute_parity(R0, input_mask_R) ^ \
+                           self.compute_parity(R3, output_mask_L) ^ \
+                           self.compute_parity(L3, output_mask_R)
+                           
+            processed_pairs.append((fixed_parity, L3))
+            
+        # Iterate Guesses
+        for guess_tuple in key_guesses:
+            # Construct subkey map
+            subkeys = {active_sboxes[i]: guess_tuple[i] for i in range(len(active_sboxes))}
+            
+            count_zeros = 0
+            
+            for fixed_p, L3 in processed_pairs:
+                # Key dependent part: f(L3, K).Gamma_L2
+                k_parity = self.partial_decryption(L3, active_sboxes, subkeys, sbox_out_masks)
+                
+                total_parity = fixed_p ^ k_parity
+                if total_parity == 0:
+                    count_zeros += 1
+                    
+            bias = abs(count_zeros - num_samples / 2)
+            if bias > max_bias:
+                max_bias = bias
+                best_key = subkeys
+                
+        print(f"Best Key Found: {best_key}")
+        print(f"Max Bias: {max_bias}")
+        
+        # Verify
+        match = True
+        for idx in active_sboxes:
+            if best_key[idx] != true_subkeys[idx]:
+                match = False
+                print(f"Mismatch at S-box {idx}: Expected {true_subkeys[idx]}, Got {best_key[idx]}")
+        
+        if match:
+            print("SUCCESS: Key bits recovered successfully!")
+        else:
+            print("FAILURE: Key recovery failed.")
 
 if __name__ == "__main__":
-    # Uruchom atak z maskami obliczonymi przez MILP
-    print("=" * 60)
-    print("Uruchamianie Ataku Liniowego z maskami zoptymalizowanymi przez MILP")
-    print("=" * 60)
-    linear_attack(rounds=3, n_pairs=20000, use_milp=True)
-    
-    print("\n" + "=" * 60)
-    print("Uruchamianie Ataku Liniowego z maską zapasową (porównanie)")
-    print("=" * 60)
-    linear_attack(rounds=3, n_pairs=20000, use_milp=False)
+    attack = LinearAttack()
+    attack.run_attack(num_samples=20000)
