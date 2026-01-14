@@ -1,34 +1,27 @@
 from pulp import LpProblem, LpVariable, LpBinary, LpMinimize, lpSum, LpStatus
 import itertools
+from src.des import DES
+from src.differentialAttack.ddt import DDTGenerator
 
 
 class DES_MILP_Solver:
-    def __init__(self, num_rounds=3):
+    def __init__(self, des:DES, num_rounds=3):
         """
         Inicjalizacja solvera MILP dla DES
         Args:
             num_rounds: liczba rund DES (R)
         """
+        self.ddt_generator = DDTGenerator()
+        self.ddt_generator.run_phase_zero()
+
         self.R = num_rounds
 
-        # Tablice permutacji DES (uproszczone, tylko niezbędne dla różnic)
-        self.E = [
-            31, 0, 1, 2, 3, 4,  # S1
-            3, 4, 5, 6, 7, 8,  # S2
-            7, 8, 9, 10, 11, 12,  # S3
-            11, 12, 13, 14, 15, 16,  # S4
-            15, 16, 17, 18, 19, 20,  # S5
-            19, 20, 21, 22, 23, 24,  # S6
-            23, 24, 25, 26, 27, 28,  # S7
-            27, 28, 29, 30, 31, 0  # S8
-        ]  # Expansion: 32-bit -> 48-bit
+        self.des = des
 
-        self.P = [
-            15, 6, 19, 20, 28, 11, 27, 16,
-            0, 14, 22, 25, 4, 17, 30, 9,
-            1, 7, 23, 13, 31, 26, 2, 8,
-            18, 12, 29, 5, 21, 10, 3, 24
-        ]  # Permutacja po S-boksach
+        # Tablice permutacji DES (uproszczone, tylko niezbędne dla różnic)
+        self.E = des.E_TABLE
+
+        self.P = des.P_TABLE
 
         # Mapowanie S-boksów: które bity E_r idą do którego S-boksu
         self.S_box_mapping = {}
@@ -85,52 +78,14 @@ class DES_MILP_Solver:
         # 4. ZMIENNE WYBORU PRZEJŚĆ (TUTAJ SYMULUJEMY - PRAWDZIWE BĘDĄ Z DDT)
         # Najpierw tworzymy sztuczne przejścia dla demonstracji
         # W rzeczywistości będą ładowane z DDT
-        self.transitions = {}  # Przechowuje informacje o przejściach
+        self.transitions = self.ddt_generator.transitions  # Przechowuje informacje o przejściach
         self.T = {}  # T_{r,i,t} - zmienne wyboru przejść
 
-        # Tworzymy kilka przykładowych przejść dla każdego S-boksa
-        # W prawdziwej implementacji będzie to ładowane z DDT
-        for i in range(8):
-            # Dla każdego S-boksa tworzymy listę możliwych przejść
-            transitions_list = []
-
-            # Przejście zerowe (Δ_in=0 → Δ_out=0)
-            transitions_list.append({
-                'delta_in': 0,  # 6-bit: 000000
-                'delta_out': 0,  # 4-bit: 0000
-                'weight': 0,  # -log2(1) = 0
-                'probability': 1.0
-            })
-
-            # Kilka przykładowych niezerowych przejść
-            # W rzeczywistości będzie ~150-200 przejść na S-boks
-            transitions_list.append({
-                'delta_in': 1,  # 000001
-                'delta_out': 2,  # 0010
-                'weight': 4000,  # -log2(1/16) = 4 × 1000
-                'probability': 0.0625
-            })
-
-            transitions_list.append({
-                'delta_in': 2,  # 000010
-                'delta_out': 5,  # 0101
-                'weight': 3000,  # -log2(1/8) = 3 × 1000
-                'probability': 0.125
-            })
-
-            transitions_list.append({
-                'delta_in': 4,  # 000100
-                'delta_out': 1,  # 0001
-                'weight': 2000,  # -log2(1/4) = 2 × 1000
-                'probability': 0.25
-            })
-
-            self.transitions[i] = transitions_list
 
         # Teraz tworzymy zmienne wyboru dla każdego przejścia
         for r in range(1, self.R + 1):
             for i in range(8):
-                for t_idx, transition in enumerate(self.transitions[i]):
+                for t_idx, _ in enumerate(self.transitions[i]):
                     self.T[(r, i, t_idx)] = LpVariable(
                         f"T_{r}_{i}_{t_idx}", 0, 1, LpBinary
                     )
@@ -234,7 +189,7 @@ class DES_MILP_Solver:
             transition_vars = [self.T[(r, i, t_idx)]
                                for t_idx in range(len(self.transitions[i]))]
             self.problem += lpSum(transition_vars) == 1
-
+            
             # Dla każdego możliwego przejścia
             for t_idx, transition in enumerate(self.transitions[i]):
                 t_var = self.T[(r, i, t_idx)]
@@ -410,17 +365,3 @@ class DES_MILP_Solver:
         for r, (l_val, r_val) in enumerate(solution['round_diffs']):
             print(f"  Runda {r}: L={l_val}, R={r_val}")
 
-
-# PRZYKŁAD UŻYCIA
-if __name__ == "__main__":
-    # Tworzenie solvera dla 3 rund DES
-    solver = DES_MILP_Solver(num_rounds=3)
-
-    # Rozwiązanie problemu
-    status = solver.solve(time_limit=30)
-
-    # Wypisanie wyników
-    if status == 1:  # Optimal
-        solver.print_solution()
-    else:
-        print(f"Nie udało się znaleźć optymalnego rozwiązania. Status: {LpStatus[status]}")
