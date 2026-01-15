@@ -1,0 +1,211 @@
+/home/patryk/.cache/pypoetry/virtualenvs/cryptominidesmilp-B2me2wnk-py3.13/bin/python /home/patryk/Side_Projects/CryptoMiniDesMILP/src/cryptominidesmilp/runner.py
+=== CryptoMiniDesMILP: DES Differential Attack ===
+
+--- FAZA 0: Generowanie DDT i wag ---
+S-box 1: Znaleziono 336 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 2: Znaleziono 335 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 3: Znaleziono 326 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 4: Znaleziono 338 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 5: Znaleziono 343 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 6: Znaleziono 345 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 7: Znaleziono 340 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 8: Znaleziono 357 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+Tworzenie zmiennych dla 4 rund...
+Utworzono zmienne:
+  Stan: 320
+  Funkcja F: 320
+  S-boksy: 320
+  Przejścia: 10752
+  XOR helper: 128
+Dodawanie ograniczeń...
+  Dodawanie ograniczeń dla rundy 1...
+  Dodawanie ograniczeń dla rundy 2...
+  Dodawanie ograniczeń dla rundy 3...
+  Dodawanie ograniczeń dla rundy 4...
+Wszystkie ograniczenia dodane.
+Ustawianie funkcji celu...
+Funkcja celu ustawiona: minimalizacja sumy 10880 wag.
+
+Rozpoczynanie rozwiązania dla 4 rund DES...
+Limit czasu: 30 sekund
+Welcome to the CBC MILP Solver
+Version: 2.10.3
+Build Date: Dec 15 2019
+
+command line - /home/patryk/.cache/pypoetry/virtualenvs/cryptominidesmilp-B2me2wnk-py3.13/lib/python3.13/site-packages/pulp/apis/../solverdir/cbc/linux/i64/cbc /tmp/181e1a403e284f50b3f4931ac1d21eba-pulp.mps -timeMode elapsed -branch -printingOptions all -solution /tmp/181e1a403e284f50b3f4931ac1d21eba-pulp.sol (default strategy 1)
+At line 2 NAME          MODEL
+At line 3 ROWS
+At line 218854 COLUMNS
+At line 702407 RHS
+At line 921257 BOUNDS
+At line 933098 ENDATA
+Problem MODEL has 218849 rows, 11840 columns and 449024 elements
+Coin0008I MODEL read with 0 errors
+Option for timeMode changed from cpu to elapsed
+Continuous objective value is 600 - 0.27 seconds
+Cgl0002I 187 variables fixed
+Cgl0003I 0 fixed, 0 tightened bounds, 19857 strengthened rows, 5 substitutions
+Cgl0003I 0 fixed, 0 tightened bounds, 1005 strengthened rows, 0 substitutions
+Cgl0003I 0 fixed, 0 tightened bounds, 1016 strengthened rows, 0 substitutions
+Cgl0003I 0 fixed, 0 tightened bounds, 1016 strengthened rows, 0 substitutions
+Cgl0003I 0 fixed, 0 tightened bounds, 1016 strengthened rows, 0 substitutions
+Cgl0003I 0 fixed, 0 tightened bounds, 1016 strengthened rows, 0 substitutions
+Cgl0003I 0 fixed, 0 tightened bounds, 1016 strengthened rows, 0 substitutions
+Cgl0003I 0 fixed, 0 tightened bounds, 1016 strengthened rows, 0 substitutions
+Cgl0003I 0 fixed, 0 tightened bounds, 963 strengthened rows, 0 substitutions
+Cgl0004I processed model has 37572 rows, 4006 columns (4006 integer (4006 of which binary)) and 88240 elements
+Cutoff increment increased from 1e-05 to 0.9999
+Cbc0038I Initial state - 183 integers unsatisfied sum - 10.4487
+Cbc0038I Pass   1: (6.11 seconds) suminf.    5.35019 (449) obj. 11437.2 iterations 5128
+Cbc0038I Pass   2: (6.52 seconds) suminf.    5.35638 (255) obj. 11438.6 iterations 1299
+Cbc0038I Pass   3: (7.55 seconds) suminf.   10.17203 (393) obj. 15788.1 iterations 2843
+Cbc0038I Pass   4: (8.71 seconds) suminf.    6.28750 (893) obj. 12738 iterations 3364
+Cbc0038I Pass   5: (8.75 seconds) suminf.    6.28750 (894) obj. 12738 iterations 158
+Cbc0038I Pass   6: (9.16 seconds) suminf.    9.34736 (816) obj. 24226.9 iterations 1682
+Cbc0038I Pass   7: (9.18 seconds) suminf.    8.82661 (822) obj. 24147.1 iterations 83
+Cbc0038I Pass   8: (9.38 seconds) suminf.    9.77593 (849) obj. 23967.8 iterations 460
+Cbc0038I Pass   9: (9.40 seconds) suminf.    9.62661 (851) obj. 23764.8 iterations 67
+Cbc0038I Pass  10: (9.42 seconds) suminf.    9.22978 (823) obj. 24116.6 iterations 94
+Cbc0038I Pass  11: (10.46 seconds) suminf.   16.09675 (319) obj. 32106.5 iterations 2736
+Cbc0038I Pass  12: (11.21 seconds) suminf.   10.20977 (1207) obj. 28525.6 iterations 2857
+Cbc0038I Pass  13: (11.24 seconds) suminf.    9.59931 (1194) obj. 28039.9 iterations 122
+Cbc0038I Pass  14: (11.93 seconds) suminf.   11.02653 (1569) obj. 29637.8 iterations 1360
+Cbc0038I Pass  15: (12.77 seconds) suminf.    8.56250 (1808) obj. 23072.7 iterations 2102
+Cbc0038I Pass  16: (14.35 seconds) suminf.    7.29448 (1772) obj. 21170 iterations 2725
+Cbc0038I Pass  17: (15.89 seconds) suminf.    4.52068 (1834) obj. 21301.4 iterations 3873
+Cbc0038I Pass  18: (16.31 seconds) suminf.    3.06222 (1944) obj. 21329.3 iterations 1196
+Cbc0038I Pass  19: (16.33 seconds) suminf.    3.06214 (1943) obj. 21329.2 iterations 12
+Cbc0038I Pass  20: (16.75 seconds) suminf.    3.68759 (1996) obj. 24156.9 iterations 947
+Cbc0038I Pass  21: (17.20 seconds) suminf.    2.86232 (1945) obj. 22917.8 iterations 1062
+Cbc0038I Pass  22: (17.62 seconds) suminf.    3.68759 (1996) obj. 25288.9 iterations 1033
+Cbc0038I Pass  23: (18.91 seconds) suminf.    2.86232 (1945) obj. 24049.8 iterations 2454
+Cbc0038I Pass  24: (20.45 seconds) suminf.    3.76517 (1594) obj. 32186.6 iterations 3579
+Cbc0038I Pass  25: (21.67 seconds) suminf.    2.65227 (1578) obj. 30794 iterations 2806
+Cbc0038I Pass  26: (22.17 seconds) suminf.    3.49675 (1657) obj. 34254.4 iterations 1695
+Cbc0038I Pass  27: (22.99 seconds) suminf.    2.45144 (1463) obj. 32839.7 iterations 2038
+Cbc0038I Pass  28: (23.69 seconds) suminf.    3.55222 (1381) obj. 39429 iterations 2021
+Cbc0038I Pass  29: (24.50 seconds) suminf.    2.85282 (1430) obj. 38819.6 iterations 1710
+Cbc0038I Pass  30: (24.87 seconds) suminf.    3.19909 (1572) obj. 39967 iterations 1066
+Cbc0038I No solution found this major pass
+Cbc0038I Before mini branch and bound, 1041 integers at bound fixed and 0 continuous
+Cbc0038I Full problem 37572 rows 4006 columns, reduced to 27505 rows 2965 columns - too large
+Cbc0038I Mini branch and bound did not improve solution (24.97 seconds)
+Cbc0038I Full problem 37573 rows 4006 columns, reduced to 37573 rows 4006 columns - too large
+Cbc0038I After 25.51 seconds - Feasibility pump exiting - took 21.46 seconds
+Cbc0031I 100 added rows had average density of 70.08
+Cbc0013I At root node, 100 cuts changed objective from 9673.2683 to 20826.185 in 18 passes
+Cbc0014I Cut generator 0 (Probing) - 1201 row cuts average 3.2 elements, 0 column cuts (0 active)  in 0.810 seconds - new frequency is 1
+Cbc0014I Cut generator 1 (Gomory) - 253 row cuts average 389.4 elements, 0 column cuts (0 active)  in 0.475 seconds - new frequency is 1
+Cbc0014I Cut generator 2 (Knapsack) - 56 row cuts average 2.0 elements, 0 column cuts (0 active)  in 0.089 seconds - new frequency is 1
+Cbc0014I Cut generator 3 (Clique) - 0 row cuts average 0.0 elements, 0 column cuts (0 active)  in 0.008 seconds - new frequency is -100
+Cbc0014I Cut generator 4 (MixedIntegerRounding2) - 0 row cuts average 0.0 elements, 0 column cuts (0 active)  in 0.183 seconds - new frequency is -100
+Cbc0014I Cut generator 5 (FlowCover) - 0 row cuts average 0.0 elements, 0 column cuts (0 active)  in 0.021 seconds - new frequency is -100
+Cbc0014I Cut generator 6 (TwoMirCuts) - 228 row cuts average 118.8 elements, 0 column cuts (0 active)  in 0.382 seconds - new frequency is 1
+Cbc0014I Cut generator 7 (ZeroHalf) - 223 row cuts average 121.8 elements, 0 column cuts (0 active)  in 11.113 seconds - new frequency is 1
+Cbc0010I After 0 nodes, 1 on tree, 1e+50 best solution, best possible 20826.185 (41.80 seconds)
+Cbc0004I Integer solution of 55719 found after 8363 iterations and 28 nodes (93.24 seconds)
+Cbc0038I Full problem 37572 rows 4006 columns, reduced to 892 rows 198 columns
+Cbc0038I Full problem 37572 rows 4006 columns, reduced to 738 rows 172 columns
+Cbc0004I Integer solution of 44676 found after 17295 iterations and 60 nodes (139.44 seconds)
+Cbc0038I Full problem 37572 rows 4006 columns, reduced to 280 rows 83 columns
+Cbc0004I Integer solution of 34605 found after 31613 iterations and 94 nodes (186.25 seconds)
+Cbc0004I Integer solution of 34320 found after 32720 iterations and 97 nodes (189.38 seconds)
+Cbc0010I After 100 nodes, 17 on tree, 34320 best solution, best possible 20826.185 (191.52 seconds)
+Cbc0004I Integer solution of 32360 found after 54418 iterations and 162 nodes (257.79 seconds)
+Cbc0038I Full problem 37572 rows 4006 columns, reduced to 1204 rows 230 columns
+Cbc0010I After 200 nodes, 17 on tree, 32360 best solution, best possible 20826.185 (296.71 seconds)
+Cbc0004I Integer solution of 30886 found after 101008 iterations and 279 nodes (393.18 seconds)
+Cbc0010I After 300 nodes, 1 on tree, 30886 best solution, best possible 20826.185 (418.67 seconds)
+Cbc0001I Search completed - best objective 30886, took 112528 iterations and 303 nodes (434.09 seconds)
+Cbc0032I Strong branching done 2910 times (108266 iterations), fathomed 1 nodes and fixed 10 variables
+Cbc0035I Maximum depth 35, 73611 variables fixed on reduced cost
+Cuts at root node changed objective from 9673.27 to 20826.2
+Probing was tried 546 times and created 71107 cuts of which 0 were active after adding rounds of cuts (4.723 seconds)
+Gomory was tried 531 times and created 864 cuts of which 0 were active after adding rounds of cuts (5.187 seconds)
+Knapsack was tried 531 times and created 948 cuts of which 0 were active after adding rounds of cuts (1.148 seconds)
+Clique was tried 18 times and created 0 cuts of which 0 were active after adding rounds of cuts (0.008 seconds)
+MixedIntegerRounding2 was tried 18 times and created 0 cuts of which 0 were active after adding rounds of cuts (0.183 seconds)
+FlowCover was tried 18 times and created 0 cuts of which 0 were active after adding rounds of cuts (0.021 seconds)
+TwoMirCuts was tried 531 times and created 1420 cuts of which 0 were active after adding rounds of cuts (3.938 seconds)
+ZeroHalf was tried 531 times and created 5977 cuts of which 0 were active after adding rounds of cuts (303.279 seconds)
+ImplicationCuts was tried 150 times and created 1263 cuts of which 0 were active after adding rounds of cuts (0.059 seconds)
+
+Result - Optimal solution found
+
+Objective value:                30886.00000000
+Enumerated nodes:               303
+Total iterations:               112528
+Time (CPU seconds):             431.86
+Time (Wallclock seconds):       434.42
+
+Option for printingOptions changed from normal to all
+Total time (CPU seconds):       432.22   (Wallclock seconds):       434.80
+
+
+Status rozwiązania: Optimal
+Wartość funkcji celu: 30886.0
+
+============================================================
+CHARAKTERYSTYKA RÓŻNICOWA DLA DES
+============================================================
+
+Liczba rund: 4
+Koszt całkowity: 30886.0
+Szacowane prawdopodobieństwo: 2^-30.89
+
+Różnica wejściowa (plaintext):
+  L0: 0x2
+  R0: 0x40
+
+Różnica wyjściowa (ciphertext):
+  L4: 0x63
+  R4: 0xb8827b
+
+Przejścia S-boksów:
+  Runda 1, S1: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S2: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S3: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S4: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S5: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S6: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S7: Δ_in=0x08→Δ_out=0x3, waga=3000, p=0.125
+  Runda 1, S8: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 2, S1: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 2, S2: Δ_in=0x04→Δ_out=0xc, waga=2678, p=0.15625
+  Runda 2, S3: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 2, S4: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 2, S5: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 2, S6: Δ_in=0x08→Δ_out=0x6, waga=2000, p=0.25
+  Runda 2, S7: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 2, S8: Δ_in=0x04→Δ_out=0x6, waga=3415, p=0.09375
+  Runda 3, S1: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 3, S2: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 3, S3: Δ_in=0x05→Δ_out=0x0, waga=3415, p=0.09375
+  Runda 3, S4: Δ_in=0x14→Δ_out=0x8, waga=3000, p=0.125
+  Runda 3, S5: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 3, S6: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 3, S7: Δ_in=0x0f→Δ_out=0xb, waga=3415, p=0.09375
+  Runda 3, S8: Δ_in=0x30→Δ_out=0x4, waga=2678, p=0.15625
+  Runda 4, S1: Δ_in=0x20→Δ_out=0xf, waga=2415, p=0.1875
+  Runda 4, S2: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 4, S3: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 4, S4: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 4, S5: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 4, S6: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 4, S7: Δ_in=0x0c→Δ_out=0xc, waga=2192, p=0.21875
+  Runda 4, S8: Δ_in=0x06→Δ_out=0x2, waga=2678, p=0.15625
+
+Różnice po każdej rundzie:
+  Runda 0: L=0x2, R=0x40
+  Runda 1: L=0x40, R=0x2000402
+  Runda 2: L=0x2000402, R=0x2a0078
+  Runda 3: L=0x2a0078, R=0x63
+  Runda 4: L=0x63, R=0xb8827b

@@ -5,13 +5,13 @@ from src.differentialAttack.ddt import DDTGenerator
 
 
 class DES_MILP_Solver:
-    def __init__(self, des:DES, num_rounds=3):
+    def __init__(self, des:DES, num_rounds=3, cutoff=0):
         """
         Inicjalizacja solvera MILP dla DES
         Args:
             num_rounds: liczba rund DES (R)
         """
-        self.ddt_generator = DDTGenerator()
+        self.ddt_generator = DDTGenerator(cutoff=cutoff)
         self.ddt_generator.run_phase_zero()
 
         self.R = num_rounds
@@ -19,9 +19,9 @@ class DES_MILP_Solver:
         self.des = des
 
         # Tablice permutacji DES (uproszczone, tylko niezbędne dla różnic)
-        self.E = des.E_TABLE
+        self.E = [x - 1 for x in des.E_TABLE]
 
-        self.P = des.P_TABLE
+        self.P = [x - 1 for x in des.P_TABLE]
 
         # Mapowanie S-boksów: które bity E_r idą do którego S-boksu
         self.S_box_mapping = {}
@@ -310,8 +310,8 @@ class DES_MILP_Solver:
 
     def _get_state_diff(self, r):
         """Konwertuje zmienne stanu na liczbę hex"""
-        l_bits = [int(self.L[(r, b)].varValue) for b in range(32)]
-        r_bits = [int(self.R_vars[(r, b)].varValue) for b in range(32)]
+        l_bits = [int(self.L[(r, b)].varValue) for b in range(31, 0, -1)]
+        r_bits = [int(self.R_vars[(r, b)].varValue) for b in range(31, 0, -1)]
 
         l_val = sum(bit << (31 - i) for i, bit in enumerate(l_bits))
         r_val = sum(bit << (31 - i) for i, bit in enumerate(r_bits))

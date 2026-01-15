@@ -2,13 +2,15 @@ import math
 from des import DES
 
 class DDTGenerator:
-    def __init__(self):
+    def __init__(self, cutoff = 0):
         # Krok 0.1: Załaduj definicję DES (w szczególności S-boxy)
         # Tworzymy instancję DES tylko po to, by mieć dostęp do stałych (S_BOXES)
         # Klucz i rundy nie mają tu znaczenia
         self.des_context = DES(key_int=0, rounds=1)
         self.sboxes = self.des_context.S_BOXES
-        
+
+        self.cutoff = cutoff
+
         # Struktury na wyniki
         self.ddt_tables = []       # Surowe liczniki
         self.transitions = []      # Przetworzone wagi i prawdopodobieństwa
@@ -70,7 +72,7 @@ class DDTGenerator:
             for delta_out in range(16):
                 count = ddt[delta_in][delta_out]
                 
-                if count > 0:
+                if count > self.cutoff:
                     # Normalizacja prawdopodobieństwa
                     p = count / 64.0
                     
