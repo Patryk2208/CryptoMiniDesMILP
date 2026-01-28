@@ -1,0 +1,109 @@
+=== CryptoMiniDesMILP: DES Differential Attack ===
+
+--- FAZA 0: Generowanie DDT i wag ---
+S-box 1: Znaleziono 814 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 2: Znaleziono 805 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 3: Znaleziono 816 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 4: Znaleziono 702 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 5: Znaleziono 784 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 6: Znaleziono 824 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 7: Znaleziono 791 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+S-box 8: Znaleziono 790 możliwych przejść różnicowych.
+         Najlepsze prawdopodobieństwo: 1.0000 (Waga: 0.00)
+Tworzenie zmiennych dla 1 rund...
+Utworzono zmienne:
+  Stan: 128
+  Funkcja F: 80
+  S-boksy: 80
+  Przejścia: 6512
+  XOR helper: 32
+Dodawanie ograniczeń...
+  Dodawanie ograniczeń dla rundy 1...
+Wszystkie ograniczenia dodane.
+Ustawianie funkcji celu...
+Funkcja celu ustawiona: minimalizacja sumy 6326 wag.
+
+Rozpoczynanie rozwiązania dla 1 rund DES...
+Limit czasu: 30 sekund
+
+Status rozwiązania: Optimal
+Wartość funkcji celu: 3000.0
+
+============================================================
+CHARAKTERYSTYKA RÓŻNICOWA DLA DES
+============================================================
+
+Liczba rund: 1
+Koszt całkowity: 3000.0
+Szacowane prawdopodobieństwo: 2^-3.00
+
+Różnica wejściowa (plaintext):
+  L0: 0x0
+  R0: 0x40000
+
+Różnica wyjściowa (ciphertext):
+  L1: 0x40000
+  R1: 0x401040
+
+Przejścia S-boksów:
+  Runda 1, S1: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S2: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S3: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S4: Δ_in=0x08→Δ_out=0xe, waga=3000, p=0.125
+  Runda 1, S5: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S6: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S7: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+  Runda 1, S8: Δ_in=0x00→Δ_out=0x0, waga=0, p=1.0
+
+Różnice po każdej rundzie:
+  Runda 0: L=0x0, R=0x40000
+  Runda 1: L=0x40000, R=0x401040
+Charakterystyka różnicowa: p = 1.25e-01
+Wymagana liczba par: ~80
+Różnica wejściowa: ('0x0', '0x40000')
+Różnica wyjściowa: ('0x40000', '0x401040')
+============================================================
+ROZPOCZĘCIE PEŁNEGO ATAKU RÓŻNICOWEGO
+============================================================
+Zbieranie 80 par plaintextów z ΔP = 0x200000000000...
+Zebrano 80 par
+Filtrowanie par z prawdziwym kluczem (symulacja)...
+Najmniejsza roznica to 0 dla 0x200004001100, 0 razy
+Znaleziono 15 par podążających charakterystyką (oczekiwano ~10.0)
+
+============================================================
+ATAK NA KLUCZ OSTATNIEJ RUNDY
+============================================================
+Używam Delta L_{n-1} z charakterystyki: 0x0
+
+WYNIKI ATAKU:
+  S-box 1: Zwycięzca: 00 (głosów: 15/15). Top3: ['00(15)', '01(15)', '02(15)']
+  S-box 2: Zwycięzca: 00 (głosów: 15/15). Top3: ['00(15)', '01(15)', '02(15)']
+  S-box 3: Zwycięzca: 00 (głosów: 15/15). Top3: ['00(15)', '01(15)', '02(15)']
+  S-box 4: Zwycięzca: 21 (głosów: 15/15). Top3: ['21(15)', '29(15)', '17(10)']
+  S-box 5: Zwycięzca: 00 (głosów: 15/15). Top3: ['00(15)', '01(15)', '02(15)']
+  S-box 6: Zwycięzca: 00 (głosów: 15/15). Top3: ['00(15)', '01(15)', '02(15)']
+  S-box 7: Zwycięzca: 00 (głosów: 15/15). Top3: ['00(15)', '01(15)', '02(15)']
+  S-box 8: Zwycięzca: 00 (głosów: 15/15). Top3: ['00(15)', '01(15)', '02(15)']
+
+============================================================
+WERYFIKACJA (TYLKO SYMULACJA)
+============================================================
+Prawdziwy klucz ostatniej rundy (48 bit): 0x5000e1120100
+  S-box 1: Zgadnięto: 00 -> ❌ BŁĄD (Oczekiwano: 14)
+  S-box 2: Zgadnięto: 00 -> ✅ OK
+  S-box 3: Zgadnięto: 00 -> ❌ BŁĄD (Oczekiwano: 03)
+  S-box 4: Zgadnięto: 21 -> ✅ OK
+  S-box 5: Zgadnięto: 00 -> ❌ BŁĄD (Oczekiwano: 04)
+  S-box 6: Zgadnięto: 00 -> ❌ BŁĄD (Oczekiwano: 20)
+  S-box 7: Zgadnięto: 00 -> ❌ BŁĄD (Oczekiwano: 04)
+  S-box 8: Zgadnięto: 00 -> ✅ OK
+
+Skuteczność: 3/8 podkluczy poprawne.

@@ -23,7 +23,7 @@ class DifferentialAttackDES:
         self.probability = pow(2, -self.characteristic['objective_value'] / 1000)
 
         # Oblicz ile par potrzebujemy
-        self.required_pairs = int(1.0 / self.probability) * 1000  # 3x dla pewności
+        self.required_pairs = int(1.0 / self.probability) * 10  # 3x dla pewności
 
         print(f"Charakterystyka różnicowa: p = {self.probability:.2e}")
         print(f"Wymagana liczba par: ~{self.required_pairs}")
@@ -42,7 +42,12 @@ class DifferentialAttackDES:
 
         pairs = []
         delta_L, delta_R = self.characteristic['input_diff']
-        delta_int = (int(delta_L, 16) << 32) | int(delta_R, 16)
+        # 1. Złóż wewnętrzną różnicę oczekiwaną przez MILP (L0 || R0)
+        delta_internal = (int(delta_L, 16) << 32) | int(delta_R, 16)
+        
+        # 2. Zastosuj FP (odwrotność IP), aby uzyskać różnicę w Plaintext
+        # Delta Plaintext = IP_inv(Delta Internal) = FP(Delta Internal)
+        delta_int = self.des.permute(delta_internal, self.des.FP_TABLE, 64)
 
         print(f"Zbieranie {num_pairs} par plaintextów z ΔP = {hex(delta_int)}...")
 
@@ -66,8 +71,18 @@ class DifferentialAttackDES:
         print(f"Filtrowanie par z prawdziwym kluczem (symulacja)...")
 
         correct_pairs = []
-        delta_C = (int(self.characteristic['output_diff'][1], 16) << 32) | int(self.characteristic['output_diff'][0], 16)
-        deltac = hex(delta_C)
+        L_end_milp = int(self.characteristic['output_diff'][0], 16)
+        R_end_milp = int(self.characteristic['output_diff'][1], 16)
+        
+        # KROK 2: Złóż je tak, jak robi to DES przed permutacją FP (czyli R || L)
+        pre_output = (R_end_milp << 32) | L_end_milp
+        
+        # KROK 3: Zastosuj permutację FP (musisz mieć dostęp do FP_TABLE)
+        # Możesz to zrobić używając instancji des
+        delta_C_int = self.des.permute(pre_output, self.des.FP_TABLE, 64)
+        
+        # Teraz delta_C jest gotowa do porównania z C ^ C_prime
+        delta_C = delta_C_int
         min_diff = 32
         min_diff_cipher = hex(0)
         min_count = 0
@@ -93,142 +108,154 @@ class DifferentialAttackDES:
               f"(oczekiwano ~{len(pairs) * self.probability:.1f})")
         return correct_pairs, all_diffs, delta_C
 
+
     def attack_last_round_key(self, filtered_pairs):
         """
-        Atak na klucz ostatniej rundy
-
-        Returns:
-            Lista kandydatów na podklucze z licznikami
+        Atak na klucz ostatniej rundy przy użyciu poprawnych par (Right Pairs).
         """
         print("\n" + "=" * 60)
-        print("ATAK NA KLAUCZ OSTATNIEJ RUNDY")
+        print("ATAK NA KLUCZ OSTATNIEJ RUNDY")
         print("=" * 60)
+        
+        if not filtered_pairs:
+            print("Brak par do analizy.")
+            return {}, {}
 
-        # DES ma 8 S-boksów w ostatniej rundzie
-        # Każdy S-boks używa 6-bitowego podklucza
+        # Potrzebujemy różnicy wejściowej do ostatniej rundy (L_{n-1}).
+        # W charakterystyce round_diffs[r] to stan po rundzie r.
+        # Jeśli atakujemy 6-rundowy DES, to input do ostatniej rundy to stan po rundzie 5.
+        # UWAGA: output_diff to stan po ostatniej rundzie.
+        # round_diffs[-1] to output_diff. round_diffs[-2] to stan przed ostatnią rundą.
+        
+        # Sprawdzamy czy mamy historię rund
+        if len(self.characteristic['round_diffs']) >= 2:
+            # Stan po przedostatniej rundzie: (L_{n-1}, R_{n-1})
+            # L_{n-1} jest nam potrzebne, bo F(R_{n-1}) ^ L_{n-1} = R_n
+            # Delta F = Delta R_n ^ Delta L_{n-1}
+            # Delta wejścia do F = Delta R_{n-1}
+            prev_round_diff = self.characteristic['round_diffs'][-2]
+            delta_L_prev = int(prev_round_diff[0], 16)
+        else:
+            # Fallback dla 1 rundy (L_{n-1} to L0)
+            delta_L_prev = int(self.characteristic['input_diff'][0], 16)
+            
+        print(f"Używam Delta L_{{n-1}} z charakterystyki: {hex(delta_L_prev)}")
 
-        # Inicjalizacja liczników dla każdego S-boksa
-        key_counters = {sbox: {key: 0 for key in range(64)}
-                        for sbox in range(8)}
+        # Liczniki dla każdego S-boxa (8 sboxów, 64 możliwe klucze każdy)
+        key_counters = [{k: 0 for k in range(64)} for _ in range(8)]
 
-        # Dla każdej poprawnej pary
-        for idx, (P, P_prime, C, C_prime) in enumerate(filtered_pairs):
-            # Odwróć ostatnią rundę (bez klucza) aby dostać wejścia do ostatnich S-boksów
+        for idx, (_, _, C, C_prime) in enumerate(filtered_pairs):
+            # 1. Cofnij permutację FP, aby uzyskać surowy wynik rundy n (R_n || L_n)
+            # Używamy IP, bo IP = FP^-1
+            C_raw = self.des.permute(C, self.des.IP_TABLE, 64)
+            C_prime_raw = self.des.permute(C_prime, self.des.IP_TABLE, 64)
 
-            # W DES, aby dostać wejście do S-boksów w rundzie R:
-            # 1. C = (L_R, R_R)
-            # 2. Wejście do S-boksów = E(R_{R-1}) = E(L_R) bo L_R = R_{R-1}
+            # 2. Rozdziel na L_n i R_n
+            # W core.py pre_output = (R << 32) | L. 
+            # Czyli górne 32 bity to R_n, dolne to L_n (które jest równe R_{n-1})
+            R_n = (C_raw >> 32) & 0xFFFFFFFF
+            L_n = C_raw & 0xFFFFFFFF
+            
+            R_n_prime = (C_prime_raw >> 32) & 0xFFFFFFFF
+            L_n_prime = C_prime_raw & 0xFFFFFFFF
 
-            L_R = C >> 32  # Lewa połowa ciphertextu
-            R_R = C & 0xFFFFFFFF  # Prawa połowa
+            # 3. Wyznacz różnicę na wyjściu funkcji F
+            # R_n = L_{n-1} ^ F(R_{n-1}, K_n)
+            # Delta R_n = Delta L_{n-1} ^ Delta F
+            # Delta F = Delta R_n ^ Delta L_{n-1}
+            delta_R_n = R_n ^ R_n_prime
+            target_F_diff = delta_R_n ^ delta_L_prev
 
-            L_R_prime = C_prime >> 32
-            R_R_prime = C_prime & 0xFFFFFFFF
+            # 4. Przygotuj wejścia do funkcji F (czyli R_{n-1} = L_n)
+            R_prev = L_n
+            R_prev_prime = L_n_prime
+            
+            # Rozszerzenie E (32 -> 48)
+            E_out = self.des.permute(R_prev, self.des.E_TABLE, 32)
+            E_out_prime = self.des.permute(R_prev_prime, self.des.E_TABLE, 32)
 
-            # Różnica na wejściu ostatnich S-boksów
-            # Wejście = E(L_R) ⊕ K_R
-            # Różnica = E(L_R) ⊕ E(L_R_prime) (klucz się kasuje w XOR!)
-
-            # Rozszerzenie E
-            E_L = self._expand(L_R)
-            E_L_prime = self._expand(L_R_prime)
-            delta_E = E_L ^ E_L_prime
-
-            # Podziel na 8 S-boksów po 6 bitów
+            # Analiza każdego S-boxa niezależnie
             for sbox in range(8):
-                # Wyodrębnij 6-bitowe wejście do tego S-boksa
-                start_bit = sbox * 6
-                mask = 0x3F << start_bit
-                delta_in = (delta_E & mask) >> start_bit
+                # Pozycja bitów dla danego S-boxa w 48-bitowym bloku E
+                # S1 to bity 0-5 (najstarsze), S8 to 42-47
+                # ALE w des.py S-boxy są iterowane od 0..7 i pobierane z shiftem.
+                # Sprawdźmy core.py -> f_function:
+                # shift_amount = (7 - i) * 6. Czyli S0 (i=0) bierze bity przesunięte o 42 (najstarsze).
+                # To oznacza, że E_out ma układ S1 S2 ... S8 od najstarszych bitów.
+                
+                # Wyciągamy 6 bitów wejścia dla S-boxa `sbox`
+                # Przesunięcie jak w core.py
+                shift = (7 - sbox) * 6
+                mask = 0x3F
+                
+                sbox_in = (E_out >> shift) & mask
+                sbox_in_prime = (E_out_prime >> shift) & mask
+                
+                # Delta wejściowa do S-boxa (nie zależy od klucza)
+                delta_in_sbox = sbox_in ^ sbox_in_prime
+                
+                # Teraz musimy sprawdzić, czy dane kandydata k na klucz generują wyjście S-boxa,
+                # które pasuje do target_F_diff.
+                
+                # Problem: target_F_diff jest po permutacji P.
+                # Nie możemy łatwo cofnąć P tylko dla fragmentu.
+                # Ale możemy obliczyć wyjście S-boxa, przepuścić przez P i sprawdzić czy pasuje do bitów target_F_diff.
+                
+                # Permutacja P w DES (core.py) mapuje bity wyjścia S-boxów na 32-bitowe słowo.
+                # Musimy wiedzieć, które bity w 32-bitowym F_out pochodzą od naszego S-boxa.
+                # Zrobimy to symulacyjnie: ustawimy wyjście S-boxa na 0xF (wszystkie 1), resztę na 0,
+                # przepuścimy przez P i zobaczymy które bity się zapalą.
+                
+                test_val_sbox = 0xF << ((7 - sbox) * 4) # Wyjście S-boxa jest na odpowiedniej pozycji przed P
+                p_mask = self.des.permute(test_val_sbox, self.des.P_TABLE, 32)
+                
+                # Oczekiwana różnica na bitach zależnych od tego S-boxa
+                target_sbox_part = target_F_diff & p_mask
 
-                # Wyjście z S-boksa (po permutacji P) wpływa na R_R
-                # R_R = L_{R-1} ⊕ P(S-box_outputs)
-                # Różnica wyjściowa S-boksa = ?
-
-                # To jest uproszczenie - w rzeczywistości potrzebujesz
-                # analizy konkretnej charakterystyki
-
-                # Dla każdego możliwego 6-bitowego podklucza
                 for k in range(64):
-                    # Oblicz rzeczywiste wejścia do S-boksa (z kluczem)
-                    actual_in = ((E_L & mask) >> start_bit) ^ k
-                    actual_in_prime = ((E_L_prime & mask) >> start_bit) ^ k
-
-                    # Sprawdź czy różnica wejściowa się zgadza
-                    if (actual_in ^ actual_in_prime) == delta_in:
-                        # Sprawdź czy wyjście S-boksa daje oczekiwaną różnicę
-                        # To wymaga analizy charakterystyki!
+                    # XOR z kluczem (hipoteza)
+                    # Uwaga: k to 6-bitowy fragment klucza
+                    real_in = sbox_in ^ k
+                    real_in_prime = sbox_in_prime ^ k
+                    
+                    # Oblicz wyjście S-boxa
+                    val = self._sbox_lookup(sbox, real_in)
+                    val_prime = self._sbox_lookup(sbox, real_in_prime)
+                    
+                    diff_val = val ^ val_prime
+                    
+                    # Umieść różnicę na odpowiedniej pozycji przed permutacją P
+                    diff_val_shifted = diff_val << ((7 - sbox) * 4)
+                    
+                    # Przepuść przez P
+                    permuted_diff = self.des.permute(diff_val_shifted, self.des.P_TABLE, 32)
+                    
+                    # Sprawdź czy pasuje do obserwowanego wyjścia F
+                    if (permuted_diff & p_mask) == target_sbox_part:
                         key_counters[sbox][k] += 1
 
-            if (idx + 1) % max(1, len(filtered_pairs) // 10) == 0:
-                print(f"  Przetworzono {idx + 1}/{len(filtered_pairs)} par")
+            if (idx + 1) % 100 == 0:
+                 print(f"  Przetworzono {idx + 1}/{len(filtered_pairs)} par")
 
-        # Znajdź najlepszych kandydatów dla każdego S-boksa
+        # Wybór najlepszych kluczy
         best_keys = {}
+        print("\nWYNIKI ATAKU:")
         for sbox in range(8):
-            best_key = max(key_counters[sbox].items(), key=lambda x: x[1])
-            best_keys[sbox] = best_key
-            print(f"S-box {sbox + 1}: klucz={best_key[0]:06b} ({hex(best_key[0])}), "
-                  f"count={best_key[1]}/{len(filtered_pairs)}")
+            # Sortuj malejąco po liczbie głosów
+            sorted_candidates = sorted(key_counters[sbox].items(), key=lambda x: x[1], reverse=True)
+            best_k = sorted_candidates[0]
+            
+            best_keys[sbox] = (best_k[0], best_k[1]) # (klucz, licznik)
+            
+            # Pokaż top 3 kandydatów
+            top3 = [f"{k:02x}({c})" for k, c in sorted_candidates[:3]]
+            print(f"  S-box {sbox+1}: Zwycięzca: {best_k[0]:02x} (głosów: {best_k[1]}/{len(filtered_pairs)}). Top3: {top3}")
 
         return best_keys, key_counters
-
-    def reconstruct_master_key(self, round_keys):
-        """
-        Odtwarza klucz główny DES z kluczy rund
-
-        Args:
-            round_keys: lista kluczy rund (każdy 48-bitowy)
-
-        Returns:
-            Klucz główny (56-bitowy)
-        """
-        print("\n" + "=" * 60)
-        print("ODTWARZANIE KLAUCZA GŁÓWNEGO DES")
-        print("=" * 60)
-
-        # W DES, wszystkie klucze rund pochodzą z jednego 56-bitowego klucza
-        # poprzez permutacje PC1 i PC2 oraz przesunięcia bitowe
-
-        # To jest uproszczona wersja - pełna implementacja wymaga
-        # odwrócenia key schedule DES
-
-        # Dla ataku różnicowego często brute-force'uje się pozostałe bity
-        print("Klucz ostatniej rundy daje 48 z 56 bitów klucza głównego")
-        print("Pozostałe 8 bitów do brute-force (256 możliwości)")
-
-        # Symulacja
-        partial_key = 0
-        for sbox in range(8):
-            key_bits = round_keys[sbox][0]
-            # Każdy S-boks używa 6-bitowego klucza
-            # W rzeczywistości bity te są rozrzucone po kluczu głównym
-            partial_key |= (key_bits << (sbox * 6))
-
-        print(f"Częściowy klucz: {partial_key:048b}")
-        print("Przeszukiwanie pozostałych 8 bitów...")
-
-        # Bruteforce pozostałych bitów
-        remaining_bits = 8
-        total_possibilities = 1 << remaining_bits
-
-        print(f"Sprawdzanie {total_possibilities} możliwości...")
-
-        # W rzeczywistości tutaj testowałbyś każdy kandydat
-        # na kilku znanych plaintext/ciphertext parach
-        print("(W rzeczywistej implementacji testujesz kandydatów)")
-
-        return None  # Zwracamy None w tej symulacji
 
     def full_attack(self, unknown_key):
         """
         Przeprowadza pełny atak
-
-        Args:
-            unknown_key: prawdziwy klucz (dla symulacji)
-
-        Returns:
-            Odgadnięty klucz
         """
         print("=" * 60)
         print("ROZPOCZĘCIE PEŁNEGO ATAKU RÓŻNICOWEGO")
@@ -238,116 +265,67 @@ class DifferentialAttackDES:
         pairs = self.collect_plaintext_pairs()
 
         # KROK 2: Filtruj pary które podążają charakterystyką
-        filtered_pairs = self.filter_correct_pairs(pairs, unknown_key)
+        filtered_pairs, _, _ = self.filter_correct_pairs(pairs)
 
-        if len(filtered_pairs) < 3:
-            print("\n⚠️ ZA MAŁO PAR PODĄŻAJĄCYCH CHARAKTERYSTYKĄ!")
-            print("   Potrzebujesz lepszej charakterystyki lub więcej par")
+        if len(filtered_pairs) == 0:
+            print("\n⚠️ BRAK PAR PODĄŻAJĄCYCH CHARAKTERYSTYKĄ!")
             return None
 
         # KROK 3: Atak na klucz ostatniej rundy
         best_keys, counters = self.attack_last_round_key(filtered_pairs)
 
-        # KROK 4: Odtwórz klucz główny
-        master_key_candidate = self.reconstruct_master_key(best_keys)
+        # KROK 4: Weryfikacja (symulowana)
+        # Tutaj w prawdziwym ataku nastąpiłoby brute-force brakujących bitów
+        # i weryfikacja na pełnym szyfrowaniu.
+        
+        # Sprawdźmy poprawność znalezionych podkluczy (dla celów edukacyjnych)
+        self._verify_key_simulation(best_keys, unknown_key)
+        
+        return best_keys
 
-        # KROK 5: Weryfikacja
-        print("\n" + "=" * 60)
-        print("WERYFIKACJA")
-        print("=" * 60)
-
-        # Test na kilku losowych parach
-        test_passed = self._verify_key(best_keys, unknown_key, filtered_pairs)
-
-        if test_passed:
-            print("✅ ATAK ZAKOŃCZONY SUKCESEM!")
-            return best_keys
-        else:
-            print("❌ ATAK NIE POWIÓDŁ SIĘ")
-            print("   Możliwe przyczyny:")
-            print("   - Charakterystyka ma za niskie prawdopodobieństwo")
-            print("   - Za mało par")
-            print("   - Błąd w implementacji ataku")
-            return None
+    def _sbox_lookup(self, sbox_idx, val_6bit):
+        """Pomocnicza funkcja symulująca działanie pojedynczego S-boxa."""
+        row = ((val_6bit >> 5) & 1) * 2 + (val_6bit & 1)
+        col = (val_6bit >> 1) & 0x0F
+        return self.des.S_BOXES[sbox_idx][row][col]
 
     def _random_64bit(self):
-        """Generuje losową 64-bitową liczbę"""
         import random
         return random.getrandbits(64)
 
-    def _expand(self, half_block):
+    def _verify_key_simulation(self, best_keys, true_key_full):
         """
-        Rozszerzenie 32-bitowego bloku do 48-bitów (funkcja E w DES)
-        Uproszczona implementacja
+        Weryfikuje znalezione podklucze z prawdziwym kluczem (tylko do symulacji/testów).
         """
-        # To powinno być zgodne z oficjalną tablicą E DES
-        result = 0
-        # Uproszczone rozszerzenie
-        for i in range(48):
-            # Każdy bit wejściowy jest używany ~1.5 razy
-            src_bit = (i * 32) // 48
-            bit = (half_block >> (31 - src_bit)) & 1
-            result |= (bit << (47 - i))
-        return result
-
-    def _verify_key(self, guessed_keys, true_key, test_pairs):
-        """
-        Weryfikuje odgadnięty klucz
-        """
-        print("Weryfikacja odgadniętego klucza...")
-
-        # W rzeczywistości używałbyś odgadniętego klucza do deszyfrowania
-        # i porównywał z oczekiwanymi plaintextami
-
-        # Tutaj symulacja
-        correct_sboxes = 0
+        print("\n" + "=" * 60)
+        print("WERYFIKACJA (TYLKO SYMULACJA)")
+        print("=" * 60)
+        
+        # Musimy wygenerować prawdziwy podklucz dla ostatniej rundy
+        # DES generuje klucze dla rund 0..rounds-1. 
+        # Jeśli atakujemy 6-rundowy DES, interesuje nas klucz rundy 5 (czyli ostatni).
+        
+        # Generujemy wszystkie podklucze
+        round_keys = self.des.generate_keys(true_key_full)
+        # Klucz ostatniej rundy
+        last_round_key = round_keys[-1] # round_keys[rounds-1]
+        
+        print(f"Prawdziwy klucz ostatniej rundy (48 bit): {hex(last_round_key)}")
+        
+        correct_cnt = 0
         for sbox in range(8):
-            # W rzeczywistości porównywałbyś z prawdziwym podkluczem
-            guessed = guessed_keys[sbox][0]
-            # Prawdziwy podklucz - w symulacji nie mamy dostępu
-            # correct = ...
-
-            # Dla demonstracji zakładamy, że zgadliśmy 6 z 8 S-boksów
-            if sbox < 6:
-                correct_sboxes += 1
-
-        success_rate = correct_sboxes / 8
-        print(f"Poprawnie odgadnięte S-boksy: {correct_sboxes}/8 ({success_rate * 100:.1f}%)")
-
-        return success_rate > 0.5
-
-
-# PRZYKŁAD UŻYCIA
-if __name__ == "__main__":
-    # Symulacja - potrzebujesz prawdziwego obiektu DES
-    class MockDES:
-        def encrypt(self, key, plaintext):
-            # Symulacja szyfrowania
-            # W rzeczywistości to byłby prawdziwy DES
-            import hashlib
-            # Prosta symulacja
-            return plaintext ^ key  # Uproszczenie!
-
-
-    # Przykładowa charakterystyka (z twojego MILP)
-    characteristic = {
-        'input_diff': ('0x40000000', '0x04000000'),
-        'output_diff': ('0x00808200', '0x60000000'),
-        'round_diffs': [
-            ('0x40000000', '0x04000000'),
-            ('0x04000000', '0x40080000'),
-        ],
-        'transitions': [
-            # Przykładowe przejścia S-boksów
-        ]
-    }
-
-    probability = 2 ** -8  # Przykładowe prawdopodobieństwo
-
-    # Inicjalizacja ataku
-    des = MockDES()
-    attack = DifferentialAttackDES(des, characteristic, probability)
-
-    # Przeprowadzenie ataku
-    true_key = 0x133457799BBCDFF1  # Przykładowy klucz
-    result = attack.full_attack(true_key)
+            # Wyciągnij 6 bitów dla danego S-boxa z prawdziwego klucza
+            # W generate_keys klucz jest 48-bitową liczbą. 
+            # Bity dla S1 są najstarsze (tak jak w E_out).
+            shift = (7 - sbox) * 6
+            true_sbox_key = (last_round_key >> shift) & 0x3F
+            
+            guessed_key = best_keys[sbox][0]
+            
+            match = (true_sbox_key == guessed_key)
+            status = "✅ OK" if match else f"❌ BŁĄD (Oczekiwano: {true_sbox_key:02x})"
+            
+            print(f"  S-box {sbox+1}: Zgadnięto: {guessed_key:02x} -> {status}")
+            if match: correct_cnt += 1
+            
+        print(f"\nSkuteczność: {correct_cnt}/8 podkluczy poprawne.")

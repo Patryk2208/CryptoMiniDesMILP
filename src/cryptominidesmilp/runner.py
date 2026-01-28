@@ -37,8 +37,9 @@ def main():
     # PRZYKŁAD UŻYCIA
     # Tworzenie solvera dla 3 rund DES
     rounds = 1
-    des = DES(0x01923572, rounds) #0x12345678
-    solver = DES_MILP_Solver(num_rounds=rounds, input_diff_L=0x40000000, input_diff_R=0x1, des=des, cutoff=0)
+    key = 0x01923572
+    des = DES(key, rounds) #0x12345678
+    solver = DES_MILP_Solver(num_rounds=rounds, input_diff_L=0x0, input_diff_R=0x00040000, des=des, cutoff=0)
 
     # Rozwiązanie problemu
     status = solver.solve(time_limit=30)
@@ -51,8 +52,7 @@ def main():
 
     attack = DifferentialAttackDES(des, solver.get_solution())
 
-    _, all_diffs, deltaP = attack.filter_correct_pairs(attack.collect_plaintext_pairs())
-    plot_diff_histogram(all_diffs, deltaP, 100)
+    attack.full_attack(key)
 
 
 def plot_diff_histogram(differences, deltaP_hex, top_n=20):
