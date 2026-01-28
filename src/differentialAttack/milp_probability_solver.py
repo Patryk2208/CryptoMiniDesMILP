@@ -5,7 +5,7 @@ from src.differentialAttack.ddt import DDTGenerator
 
 
 class DES_MILP_Solver:
-    def __init__(self, des:DES, num_rounds=3, cutoff=0):
+    def __init__(self, des:DES, input_diff_L, input_diff_R, num_rounds=3, cutoff=0):
         """
         Inicjalizacja solvera MILP dla DES
         Args:
@@ -14,12 +14,15 @@ class DES_MILP_Solver:
         self.ddt_generator = DDTGenerator(cutoff=cutoff)
         self.ddt_generator.run_phase_zero()
 
-        self.R = num_rounds
+        self.Rounds = num_rounds
+
+        self.input_diff_L = input_diff_L
+        self.input_diff_R = input_diff_R
 
         self.des = des
 
         # Tablice permutacji DES (uproszczone, tylko niezbędne dla różnic)
-        self.E = [x - 1 for x in des.E_TABLE]
+        self.ExpansionTable = [x - 1 for x in des.E_TABLE]
 
         self.P = [x - 1 for x in des.P_TABLE]
 
@@ -43,24 +46,24 @@ class DES_MILP_Solver:
 
     def _create_variables(self):
         """Tworzy wszystkie zmienne opisane w specyfikacji"""
-        print(f"Tworzenie zmiennych dla {self.R} rund...")
+        print(f"Tworzenie zmiennych dla {self.Rounds} rund...")
 
         # 1. ZMIENNE STANU
-        self.L = {}  # L_r[b]
-        self.R_vars = {}  # R_r[b] (nazwa R_vars bo 'R' jest zajęte przez liczbę rund)
+        self.L = {}  # L_r[b] lsb===0 indexing
+        self.R = {}  # R_r[b] lsb===0 indexing
 
-        for r in range(self.R + 1):  # 0..R
+        for r in range(self.Rounds + 1):  # 0..R
             for b in range(32):
                 self.L[(r, b)] = LpVariable(f"L_{r}_{b}", 0, 1, LpBinary)
-                self.R_vars[(r, b)] = LpVariable(f"R_{r}_{b}", 0, 1, LpBinary)
+                self.R[(r, b)] = LpVariable(f"R_{r}_{b}", 0, 1, LpBinary)
 
         # 2. ZMIENNE FUNKCJI F
-        self.E_vars = {}  # E_r[e] (nazwa E_vars bo 'E' to tablica expansion)
+        self.E = {}  # E_r[e]
         self.F = {}  # F_r[b]
 
-        for r in range(1, self.R + 1):  # 1..R
+        for r in range(1, self.Rounds + 1):  # 1..R
             for e in range(48):
-                self.E_vars[(r, e)] = LpVariable(f"E_{r}_{e}", 0, 1, LpBinary)
+                self.E[(r, e)] = LpVariable(f"E_{r}_{e}", 0, 1, LpBinary)
             for b in range(32):
                 self.F[(r, b)] = LpVariable(f"F_{r}_{b}", 0, 1, LpBinary)
 
@@ -68,7 +71,7 @@ class DES_MILP_Solver:
         self.S_in = {}  # S_in_{r,i}[k]
         self.S_out = {}  # S_out_{r,i}[m]
 
-        for r in range(1, self.R + 1):
+        for r in range(1, self.Rounds + 1):
             for i in range(8):  # 0..7 dla S-boksów
                 for k in range(6):
                     self.S_in[(r, i, k)] = LpVariable(f"S_in_{r}_{i}_{k}", 0, 1, LpBinary)
@@ -83,7 +86,7 @@ class DES_MILP_Solver:
 
 
         # Teraz tworzymy zmienne wyboru dla każdego przejścia
-        for r in range(1, self.R + 1):
+        for r in range(1, self.Rounds + 1):
             for i in range(8):
                 for t_idx, _ in enumerate(self.transitions[i]):
                     self.T[(r, i, t_idx)] = LpVariable(
@@ -92,16 +95,16 @@ class DES_MILP_Solver:
 
         # 5. ZMIENNE POMOCNICZE DLA XOR
         self.xor_vars = {}  # xor_{r,b}
-        for r in range(1, self.R + 1):
+        for r in range(1, self.Rounds + 1):
             for b in range(32):
                 self.xor_vars[(r, b)] = LpVariable(f"xor_{r}_{b}", 0, 1, LpBinary)
 
         print(f"Utworzono zmienne:")
-        print(f"  Stan: {2 * (self.R + 1) * 32}")
-        print(f"  Funkcja F: {self.R * 48 + self.R * 32}")
-        print(f"  S-boksy: {self.R * 8 * 6 + self.R * 8 * 4}")
-        print(f"  Przejścia: {self.R * 8 * len(self.transitions[0])}")
-        print(f"  XOR helper: {self.R * 32}")
+        print(f"  Stan: {2 * (self.Rounds + 1) * 32}")
+        print(f"  Funkcja F: {self.Rounds * 48 + self.Rounds * 32}")
+        print(f"  S-boksy: {self.Rounds * 8 * 6 + self.Rounds * 8 * 4}")
+        print(f"  Przejścia: {self.Rounds * 8 * len(self.transitions[0])}")
+        print(f"  XOR helper: {self.Rounds * 32}")
 
     def _add_constraints(self):
         """Dodaje wszystkie ograniczenia do modelu"""
@@ -113,7 +116,7 @@ class DES_MILP_Solver:
         self._set_input_difference()
 
         # 2. OGRANICZENIA DLA KAŻDEJ RUNDY
-        for r in range(1, self.R + 1):
+        for r in range(1, self.Rounds + 1):
             self._add_round_constraints(r)
 
         # 3. OGRANICZENIE UNIKAJĄCE TRYWIALNEGO ROZWIĄZANIA
@@ -124,23 +127,14 @@ class DES_MILP_Solver:
 
     def _set_input_difference(self):
         """Ustala różnicę wejściową (przykładowa dobra różnica dla DES)"""
-        # 0x40000000 w lewej połowie, 0x04000000 w prawej
-        # To daje: L0 = 0100 0000 0000 0000 0000 0000 0000 0000
-        #          R0 = 0000 0100 0000 0000 0000 0000 0000 0000
 
-        # Ustawiamy L0[30] = 1 (bit 30 z 31..0), reszta 0
-        for b in range(32):
-            if b == 30:  # 0x40000000 ma bit 30 ustawiony (licząc od 0)
-                self.problem += self.L[(0, b)] == 1
-            else:
-                self.problem += self.L[(0, b)] == 0
+        for i in range(32):
+            bitL = (self.input_diff_L >> (31 - i)) & 1
+            bitR = (self.input_diff_R >> (31 - i)) & 1
 
-        # Ustawiamy R0[25] = 1 (bit 25), reszta 0
-        for b in range(32):
-            if b == 25:  # 0x04000000 ma bit 25 ustawiony
-                self.problem += self.R_vars[(0, b)] == 1
-            else:
-                self.problem += self.R_vars[(0, b)] == 0
+            self.problem += self.L[(0, i)] == bitL
+            self.problem += self.R[(0, i)] == bitR
+
 
     def _add_round_constraints(self, r):
         """Dodaje ograniczenia dla rundy r"""
@@ -164,8 +158,8 @@ class DES_MILP_Solver:
     def _add_expansion_constraints(self, r):
         """E_r[e] = R_{r-1}[E[e]] gdzie E to tablica expansion"""
         for e in range(48):
-            source_bit = self.E[e]  # Który bit R_{r-1} kopiujemy
-            self.problem += self.E_vars[(r, e)] == self.R_vars[(r - 1, source_bit)]
+            source_bit = self.ExpansionTable[e]  # Który bit R_{r-1} kopiujemy
+            self.problem += self.E[(r, e)] == self.R[(r - 1, source_bit)]
 
     def _add_sbox_input_constraints(self, r):
         """S_in_{r,i} pobiera 6 bitów z E_r"""
@@ -173,7 +167,7 @@ class DES_MILP_Solver:
             for k in range(6):
                 # Który bit E_r odpowiada bitowi k wejścia S-boksa i
                 e_bit = i * 6 + k
-                self.problem += self.S_in[(r, i, k)] == self.E_vars[(r, e_bit)]
+                self.problem += self.S_in[(r, i, k)] == self.E[(r, e_bit)]
 
     def _add_sbox_transition_constraints(self, r):
         """
@@ -234,13 +228,13 @@ class DES_MILP_Solver:
         """Struktura Feistela: L_r = R_{r-1}, R_r = L_{r-1} XOR F_r"""
         # L_r = R_{r-1} (proste kopiowanie)
         for b in range(32):
-            self.problem += self.L[(r, b)] == self.R_vars[(r - 1, b)]
+            self.problem += self.L[(r, b)] == self.R[(r - 1, b)]
 
         # R_r = L_{r-1} XOR F_r (trzeba zlinearyzować XOR)
         for b in range(32):
             l_bit = self.L[(r - 1, b)]
             f_bit = self.F[(r, b)]
-            r_bit = self.R_vars[(r, b)]
+            r_bit = self.R[(r, b)]
             xor_var = self.xor_vars[(r, b)]
 
             # Linearizacja XOR: x = y XOR z
@@ -258,8 +252,8 @@ class DES_MILP_Solver:
         # Suma wszystkich bitów różnicy wyjściowej >= 1
         output_bits = []
         for b in range(32):
-            output_bits.append(self.L[(self.R, b)])
-            output_bits.append(self.R_vars[(self.R, b)])
+            output_bits.append(self.L[(self.Rounds, b)])
+            output_bits.append(self.R[(self.Rounds, b)])
 
         self.problem += lpSum(output_bits) >= 1
 
@@ -269,7 +263,7 @@ class DES_MILP_Solver:
 
         objective_terms = []
 
-        for r in range(1, self.R + 1):
+        for r in range(1, self.Rounds + 1):
             for i in range(8):
                 for t_idx, transition in enumerate(self.transitions[i]):
                     weight = transition['weight']
@@ -281,7 +275,7 @@ class DES_MILP_Solver:
 
     def solve(self, time_limit=60):
         """Rozwiązuje problem MILP"""
-        print(f"\nRozpoczynanie rozwiązania dla {self.R} rund DES...")
+        print(f"\nRozpoczynanie rozwiązania dla {self.Rounds} rund DES...")
         print(f"Limit czasu: {time_limit} sekund")
 
         # Ustawienie solvera (CBC jest domyślny w PuLP)
@@ -300,8 +294,8 @@ class DES_MILP_Solver:
 
         solution = {
             'input_diff': self._get_state_diff(0),
-            'output_diff': self._get_state_diff(self.R),
-            'round_diffs': [self._get_state_diff(r) for r in range(self.R + 1)],
+            'output_diff': self._get_state_diff(self.Rounds),
+            'round_diffs': [self._get_state_diff(r) for r in range(self.Rounds + 1)],
             'objective_value': self.problem.objective.value(),
             'transitions': self._get_selected_transitions()
         }
@@ -310,19 +304,19 @@ class DES_MILP_Solver:
 
     def _get_state_diff(self, r):
         """Konwertuje zmienne stanu na liczbę hex"""
-        l_bits = [int(self.L[(r, b)].varValue) for b in range(31, 0, -1)]
-        r_bits = [int(self.R_vars[(r, b)].varValue) for b in range(31, 0, -1)]
+        l_bits = [int(self.L[(r, b)].varValue) for b in range(32)]
+        r_bits = [int(self.R[(r, b)].varValue) for b in range(32)]
 
         l_val = sum(bit << (31 - i) for i, bit in enumerate(l_bits))
         r_val = sum(bit << (31 - i) for i, bit in enumerate(r_bits))
 
-        return (hex(l_val), hex(r_val))
+        return hex(l_val), hex(r_val)
 
     def _get_selected_transitions(self):
         """Pobiera wybrane przejścia S-boksów"""
         selected = []
 
-        for r in range(1, self.R + 1):
+        for r in range(1, self.Rounds + 1):
             for i in range(8):
                 for t_idx in range(len(self.transitions[i])):
                     if self.T[(r, i, t_idx)].varValue > 0.5:  # Wartość ~1
@@ -343,7 +337,7 @@ class DES_MILP_Solver:
         print("CHARAKTERYSTYKA RÓŻNICOWA DLA DES")
         print("=" * 60)
 
-        print(f"\nLiczba rund: {self.R}")
+        print(f"\nLiczba rund: {self.Rounds}")
         print(f"Koszt całkowity: {solution['objective_value']}")
         print(f"Szacowane prawdopodobieństwo: 2^-{solution['objective_value'] / 1000:.2f}")
 
@@ -352,8 +346,8 @@ class DES_MILP_Solver:
         print(f"  R0: {solution['input_diff'][1]}")
 
         print(f"\nRóżnica wyjściowa (ciphertext):")
-        print(f"  L{self.R}: {solution['output_diff'][0]}")
-        print(f"  R{self.R}: {solution['output_diff'][1]}")
+        print(f"  L{self.Rounds}: {solution['output_diff'][0]}")
+        print(f"  R{self.Rounds}: {solution['output_diff'][1]}")
 
         print(f"\nPrzejścia S-boksów:")
         for trans in solution['transitions']:

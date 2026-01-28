@@ -1,8 +1,11 @@
 import sys
+
 # Importujemy funkcjonalności z sąsiednich pakietów
 from des import DES
 from differentialAttack.attack import DifferentialAttackDES
 from src.differentialAttack.milp_probability_solver import DES_MILP_Solver
+from collections import Counter
+from matplotlib import pyplot as plt
 
 def main():
     print("=== CryptoMiniDesMILP: DES Differential Attack ===\n")
@@ -33,8 +36,9 @@ def main():
         
     # PRZYKŁAD UŻYCIA
     # Tworzenie solvera dla 3 rund DES
-    des = DES(0x12345678, 2)
-    solver = DES_MILP_Solver(num_rounds=2, des=des, cutoff=0)
+    rounds = 1
+    des = DES(0x01923572, rounds) #0x12345678
+    solver = DES_MILP_Solver(num_rounds=rounds, input_diff_L=0x40000000, input_diff_R=0x1, des=des, cutoff=0)
 
     # Rozwiązanie problemu
     status = solver.solve(time_limit=30)
@@ -47,7 +51,43 @@ def main():
 
     attack = DifferentialAttackDES(des, solver.get_solution())
 
-    attack.filter_correct_pairs(attack.collect_plaintext_pairs())
+    _, all_diffs, deltaP = attack.filter_correct_pairs(attack.collect_plaintext_pairs())
+    plot_diff_histogram(all_diffs, deltaP, 100)
+
+
+def plot_diff_histogram(differences, deltaP_hex, top_n=20):
+    # Licz częstości różnic
+    diff_counts = Counter(differences)
+
+    # Weź top N najczęstszych
+    common_diffs = diff_counts.most_common(top_n)
+
+    # Przygotuj dane do wykresu
+    diff_hex = [d for d, _ in common_diffs]
+    counts = [count for _, count in common_diffs]
+
+    # Twórz histogram
+    plt.figure(figsize=(12, 6))
+    bars = plt.bar(diff_hex, counts, color='skyblue')
+    plt.xlabel('ΔC (różnica szyfrogramów)')
+    plt.ylabel('Liczba wystąpień')
+    plt.title(f'Histogram ΔC dla ΔP = {deltaP_hex} (top {top_n})')
+    plt.xticks(rotation=45, ha='right')
+
+    # Dodaj wartości na słupkach
+    for bar, count in zip(bars, counts):
+        plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
+                 str(count), ha='center', va='bottom', fontsize=9)
+
+    plt.tight_layout()
+    plt.show()
+
+    # Zwróć najczęstszą różnicę
+    most_common = common_diffs[0]
+    print(f"Najczęstsza ΔC: 0x{most_common[0]:016X} występuje {most_common[1]} razy")
+    print(f"Prawdopodobieństwo: {most_common[1] / len(differences):.6f}")
+
+    return most_common[0]
 
 if __name__ == "__main__":
     main()

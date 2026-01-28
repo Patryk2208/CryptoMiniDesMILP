@@ -23,7 +23,7 @@ class DifferentialAttackDES:
         self.probability = pow(2, -self.characteristic['objective_value'] / 1000)
 
         # Oblicz ile par potrzebujemy
-        self.required_pairs = int(1.0 / self.probability) * 50  # 3x dla pewności
+        self.required_pairs = int(1.0 / self.probability) * 1000  # 3x dla pewności
 
         print(f"Charakterystyka różnicowa: p = {self.probability:.2e}")
         print(f"Wymagana liczba par: ~{self.required_pairs}")
@@ -66,19 +66,32 @@ class DifferentialAttackDES:
         print(f"Filtrowanie par z prawdziwym kluczem (symulacja)...")
 
         correct_pairs = []
-        delta_C = (int(self.characteristic['output_diff'][0], 16) << 32) | \
-                  int(self.characteristic['output_diff'][1], 16)
+        delta_C = (int(self.characteristic['output_diff'][1], 16) << 32) | int(self.characteristic['output_diff'][0], 16)
+        deltac = hex(delta_C)
+        min_diff = 32
+        min_diff_cipher = hex(0)
+        min_count = 0
+        all_diffs = []
 
         for P, P_prime in pairs:
             C = self.des.encrypt(P)
             C_prime = self.des.encrypt(P_prime)
 
+            delta = hex(C ^ C_prime)
+            diff = (C ^ C_prime) ^ delta_C
+            if diff.bit_count() < min_diff:
+                min_diff = diff.bit_count()
+                min_diff_cipher = delta
+
+            all_diffs.append(delta)
+
             if (C ^ C_prime) == delta_C:
                 correct_pairs.append((P, P_prime, C, C_prime))
 
+        print(f"Najmniejsza roznica to {min_diff} dla {min_diff_cipher}, {min_count} razy")
         print(f"Znaleziono {len(correct_pairs)} par podążających charakterystyką "
               f"(oczekiwano ~{len(pairs) * self.probability:.1f})")
-        return correct_pairs
+        return correct_pairs, all_diffs, delta_C
 
     def attack_last_round_key(self, filtered_pairs):
         """
